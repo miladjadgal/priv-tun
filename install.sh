@@ -1,364 +1,249 @@
 #!/bin/bash
-# =====================================================
-# ADVANCED MTPROTO PROXY WITH XRAY INTEGRATION
-# Architecture: MTProto → Xray (VLESS/Reality) → VXLAN
-# =====================================================
-
-set -e
+# ==========================================
+# Advanced Anti-DPI Tunnel - Master Script
+# Architecture: GRE → WireGuard → Shadowsocks (Obfs) → Xray (VLESS+XTLS)
+# ==========================================
 
 # Configuration
-export DOMAIN="cdn.microsoft.com"
-export IRAN_IP="193.151.138.90"
-export KHAREJ_IP="162.19.247.8"
-export MTPROTO_PORT=443
-export XRAY_PORT=8443
-export FAKE_TLS_PORT=2053
+export TUNNEL_VERSION="v2.0"
+export DEBUG_MODE=false
+export LOG_LEVEL="info"
 
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-CYAN='\033[0;36m'
 NC='\033[0m'
 
-# =====================================================
-# MODULE 1: ADVANCED MTPROTO PROXY SETUP
-# =====================================================
-setup_mtproto_proxy() {
-    echo -e "${BLUE}[*] Setting up Advanced MTProto Proxy...${NC}"
+# ==========================================
+# MODULE 1: DPI DETECTION & ANALYSIS MODULE
+# ==========================================
+analyze_dpi_layer() {
+    echo -e "${BLUE}[*] Analyzing DPI Detection Layers...${NC}"
     
-    # Install prerequisites
-    apt-get update
-    apt-get install -y \
-        git \
-        build-essential \
-        zlib1g-dev \
-        libssl-dev \
-        libevent-dev \
-        python3 \
-        python3-pip \
-        cmake
+    # Test 1: Protocol Fingerprinting
+    echo -e "${YELLOW}[!] Testing Protocol Fingerprinting...${NC}"
+    if timeout 5 tcpdump -i any -c 10 'tcp[tcpflags] & (tcp-syn|tcp-ack) != 0' 2>/dev/null | grep -q "length"; then
+        echo -e "${RED}[!] DPI detected: TCP Handshake Analysis${NC}"
+        export DPI_TCP_FP=true
+    fi
     
-    # Clone and build MTProto proxy
-    cd /tmp
-    git clone https://github.com/TelegramMessenger/MTProxy
-    cd MTProxy
-    make
+    # Test 2: Packet Length Analysis
+    echo -e "${YELLOW}[!] Testing Packet Length Patterns...${NC}"
+    PSIZE=$(ping -c 3 -M do -s 1200 8.8.8.8 2>/dev/null | grep -oP '\d+(?= bytes)')
+    if [ "$PSIZE" -lt 1200 ]; then
+        echo -e "${RED}[!] DPI detected: MTU/Size Based Filtering${NC}"
+        export DPI_SIZE_FILTER=true
+    fi
     
-    # Generate secret with DD (Fake TLS) mode
-    SECRET=$(head -c 16 /dev/urandom | xxd -ps)
-    FAKE_TLS_DOMAIN="telegram.org"
+    # Test 3: TLS Fingerprinting
+    echo -e "${YELLOW}[!] Testing TLS Fingerprinting...${NC}"
+    if curl -s --tlsv1.3 --tls-max 1.3 https://www.google.com 2>&1 | grep -q "reset"; then
+        echo -e "${RED}[!] DPI detected: TLS Deep Inspection${NC}"
+        export DPI_TLS_INSPECT=true
+    fi
     
-    # Create configuration
-    cat > /etc/mtproxy.conf << EOF
-# MTProxy Configuration - Advanced Anti-DPI
-port = ${MTPROTO_PORT}
-secret = ${SECRET}
-proxy_ip = 127.0.0.1
-proxy_port = ${XRAY_PORT}
-workers = $(nproc)
-dd-only = true
-tls-only = true
-domain = ${FAKE_TLS_DOMAIN}
-stats = false
-allow-skip-dh = true
-aes-pwd = $(openssl rand -hex 32)
-user = nobody
-group = nogroup
-
-# Performance optimizations
-stats-port = 8888
-cpu-affinity = 0-$(($(nproc)-1))
-nice = -10
-tcp-keepalive = 60
-tcp-fast-open = 512
-tcp-nodelay = true
-tcp-tw-reuse = true
-tcp-tw-recycle = true
-
-# Obfuscation settings
-obfuscation = true
-obfuscation-level = 2
-obfuscation-secret = $(openssl rand -hex 16)
-
-# Memory optimizations
-max-connections = 100000
-max-memory = 2048M
-msg-buffer-size = 65536
-read-buffer-size = 131072
-write-buffer-size = 131072
-
-# Logging (minimal)
-log-level = 0
-log-file = /dev/null
-EOF
-    
-    # Create systemd service
-    cat > /etc/systemd/system/mtproxy.service << EOF
-[Unit]
-Description=Advanced MTProto Proxy
-After=network.target
-
-[Service]
-Type=simple
-User=nobody
-Group=nogroup
-LimitNOFILE=1000000
-LimitNPROC=1000000
-LimitCORE=infinity
-WorkingDirectory=/tmp/MTProxy
-ExecStart=/tmp/MTProxy/objs/bin/mtproto-proxy -c /etc/mtproxy.conf
-ExecReload=/bin/kill -HUP \$MAINPID
-Restart=always
-RestartSec=5
-CPUSchedulingPolicy=rr
-CPUSchedulingPriority=99
-Nice=-10
-
-# Security
-NoNewPrivileges=yes
-PrivateTmp=yes
-PrivateDevices=yes
-ProtectSystem=strict
-ProtectHome=yes
-ReadWritePaths=/tmp
-
-# Performance
-OOMScoreAdjust=-1000
-IOSchedulingClass=realtime
-IOSchedulingPriority=0
-
-[Install]
-WantedBy=multi-user.target
-EOF
-    
-    # Generate fake TLS certificate
-    openssl req -new -newkey rsa:2048 -days 365 -nodes -x509 \
-        -subj "/C=US/ST=California/L=San Francisco/O=Telegram Messenger Inc/CN=${FAKE_TLS_DOMAIN}" \
-        -keyout /etc/mtproxy/fake-tls.key \
-        -out /etc/mtproxy/fake-tls.crt
-    
-    # Create wrapper for enhanced obfuscation
-    cat > /usr/local/bin/mtproxy-wrapper.sh << 'EOF'
-#!/bin/bash
-# MTProxy Wrapper with Traffic Randomization
-
-# Randomize packet timing
-RANDOM_DELAY=$((RANDOM % 20 + 5))
-tc qdisc add dev $INTERFACE root netem delay ${RANDOM_DELAY}ms 5ms 25%
-
-# Start MTProxy with environmental protection
-exec /tmp/MTProxy/objs/bin/mtproto-proxy \
-    -c /etc/mtproxy.conf \
-    --aes-pwd /etc/mtproxy/aes.key \
-    --allow-skip-dh \
-    --dd-only \
-    --tls-only \
-    --domain $FAKE_TLS_DOMAIN \
-    --tls-cert /etc/mtproxy/fake-tls.crt \
-    --tls-key /etc/mtproxy/fake-tls.key \
-    --fake-tls \
-    --obfuscation-level 2 \
-    --stats=false \
-    "$@"
-EOF
-    
-    chmod +x /usr/local/bin/mtproxy-wrapper.sh
-    
-    # Create traffic randomizer
-    cat > /usr/local/bin/mtproto-randomizer.sh << 'EOF'
-#!/bin/bash
-# MTProto Traffic Pattern Randomizer
-
-while true; do
-    # Change obfuscation parameters every 10-30 minutes
-    SLEEP_TIME=$((600 + RANDOM % 1200))
-    
-    # Randomize MTProto secret (rotating)
-    NEW_SECRET=$(head -c 16 /dev/urandom | xxd -ps)
-    sed -i "s/secret = .*/secret = ${NEW_SECRET}/" /etc/mtproxy.conf
-    
-    # Randomize port between standard ports
-    NEW_PORT=$(( RANDOM % 3 ))
-    case $NEW_PORT in
-        0) PORT=443 ;;
-        1) PORT=8443 ;;
-        2) PORT=2053 ;;
-    esac
-    sed -i "s/port = .*/port = ${PORT}/" /etc/mtproxy.conf
-    
-    # Randomize TCP options
-    NEW_TFO=$((512 + RANDOM % 512))
-    sed -i "s/tcp-fast-open = .*/tcp-fast-open = ${NEW_TFO}/" /etc/mtproxy.conf
-    
-    # Restart with new parameters
-    systemctl restart mtproxy
-    
-    sleep $SLEEP_TIME
-done
-EOF
-    
-    chmod +x /usr/local/bin/mtproto-randomizer.sh
-    
-    echo -e "${GREEN}[+] MTProxy setup complete!${NC}"
-    echo -e "${YELLOW}[!] Secret: ${SECRET}${NC}"
-    echo -e "${YELLOW}[!] Fake-TLS Domain: ${FAKE_TLS_DOMAIN}${NC}"
+    # Test 4: Traffic Behavior Analysis
+    echo -e "${YELLOW}[!] Testing Traffic Pattern Detection...${NC}"
+    if ss -tunlp | grep -E ':443|:80' | wc -l -gt 5; then
+        echo -e "${RED}[!] DPI detected: Port/Behavior Analysis${NC}"
+        export DPI_BEHAVIOR=true
+    fi
 }
 
-# =====================================================
-# MODULE 2: XRAY INTEGRATION WITH MTPROTO
-# =====================================================
-setup_xray_mtproto() {
-    echo -e "${BLUE}[*] Setting up Xray with MTProto Integration...${NC}"
+# ==========================================
+# MODULE 2: GRE TRANSPORT OPTIMIZATION
+# ==========================================
+optimize_gre_transport() {
+    echo -e "${BLUE}[*] Optimizing GRE Transport Layer...${NC}"
     
-    # Install Xray
-    bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
+    # Disable unnecessary features
+    ethtool -K $INTERFACE rx off tx off sg off tso off gso off gro off lro off 2>/dev/null
     
-    # Generate Xray configuration specifically for MTProto
-    cat > /usr/local/etc/xray/config_mtproto.json << EOF
+    # Custom GRE optimization
+    ip link set $GRE_IFACE mtu 1500
+    
+    # TCP Optimization for GRE
+    cat > /etc/sysctl.d/99-gre-optimize.conf << EOF
+# GRE Specific Optimizations
+net.core.rmem_max = 134217728
+net.core.wmem_max = 134217728
+net.ipv4.tcp_rmem = 4096 87380 134217728
+net.ipv4.tcp_wmem = 4096 65536 134217728
+net.ipv4.tcp_mtu_probing = 2
+net.ipv4.tcp_no_metrics_save = 1
+net.ipv4.tcp_slow_start_after_idle = 0
+net.ipv4.tcp_tw_reuse = 1
+net.ipv4.tcp_frto = 2
+net.ipv4.tcp_fastopen = 3
+net.ipv4.tcp_congestion_control = bbr2
+net.ipv4.tcp_notsent_lowat = 16384
+net.ipv4.tcp_adv_win_scale = 2
+net.core.default_qdisc = fq_pie
+EOF
+    
+    # Apply optimizations
+    sysctl -p /etc/sysctl.d/99-gre-optimize.conf
+    
+    # Queue Discipline
+    tc qdisc add dev $GRE_IFACE root fq_pie limit 10240p flows 1024
+    tc qdisc add dev $INTERFACE root fq_pie limit 10240p flows 1024
+}
+
+# ==========================================
+# MODULE 3: XRAY BANDWIDTH LIMIT ANALYSIS
+# ==========================================
+analyze_xray_throttling() {
+    echo -e "${BLUE}[*] Analyzing Xray Bandwidth Limiting...${NC}"
+    
+    # Common Xray detection patterns
+    PATTERNS=(
+        "xtls-rprx-vision"
+        "xray"
+        "vless"
+        "vmess"
+        "tls.sni"
+        "reality"
+    )
+    
+    # Test each pattern
+    for pattern in "${PATTERNS[@]}"; do
+        if tcpdump -i any -A -c 5 2>/dev/null | grep -i "$pattern" > /dev/null; then
+            echo -e "${RED}[!] Xray detection pattern found: $pattern${NC}"
+            export XRAY_PATTERN_DETECTED=true
+        fi
+    done
+    
+    # Test bandwidth throttling
+    echo -e "${YELLOW}[!] Testing for Bandwidth Throttling...${NC}"
+    BASELINE_SPEED=$(iperf3 -c speedtest.server -t 3 -P 5 2>/dev/null | grep "receiver" | awk '{print $7}')
+    sleep 10
+    XRAY_SPEED=$(iperf3 -c speedtest.server -t 3 -P 5 -p 443 2>/dev/null | grep "receiver" | awk '{print $7}')
+    
+    if [ ! -z "$BASELINE_SPEED" ] && [ ! -z "$XRAY_SPEED" ]; then
+        THROTTLE_RATIO=$(echo "scale=2; $XRAY_SPEED / $BASELINE_SPEED" | bc)
+        if (( $(echo "$THROTTLE_RATIO < 0.5" | bc -l) )); then
+            echo -e "${RED}[!] Bandwidth throttling detected: $THROTTLE_RATIO ratio${NC}"
+            export BW_THROTTLED=true
+        fi
+    fi
+}
+
+# ==========================================
+# MODULE 4: ADVANCED OBFS LAYER
+# ==========================================
+setup_obfs_layer() {
+    echo -e "${BLUE}[*] Setting up Obfuscation Layer...${NC}"
+    
+    # 1. Shadowsocks with Obfs (for TCP)
+    apt-get install -y shadowsocks-libev simple-obfs
+    
+    # SS-Obfs configuration
+    cat > /etc/shadowsocks-libev/obfs.json << EOF
+{
+    "server": "0.0.0.0",
+    "server_port": 8443,
+    "password": "$(openssl rand -base64 32)",
+    "method": "chacha20-ietf-poly1305",
+    "plugin": "obfs-server",
+    "plugin_opts": "obfs=http;obfs-host=cloudflare.com",
+    "mode": "tcp_and_udp",
+    "fast_open": true,
+    "no_delay": true
+}
+EOF
+    
+    # 2. v2ray-plugin for WebSocket obfs
+    cat > /etc/v2ray-plugin/config.json << EOF
+{
+    "protocol": "shadowsocks",
+    "transport": {
+        "type": "ws",
+        "path": "/cdn-cgi/trace",
+        "headers": {
+            "Host": "www.cloudflare.com",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        }
+    },
+    "mux": {
+        "enabled": true,
+        "concurrency": 8
+    }
+}
+EOF
+}
+
+# ==========================================
+# MODULE 5: XRAY CONFIG OPTIMIZATION
+# ==========================================
+optimize_xray_config() {
+    echo -e "${BLUE}[*] Optimizing Xray Configuration...${NC}"
+    
+    cat > /usr/local/etc/xray/anti_dpi_config.json << EOF
 {
     "log": {
-        "loglevel": "error",
+        "loglevel": "warning",
+        "access": "/dev/null",
         "error": "/dev/null"
     },
-    "inbounds": [
-        {
-            "port": ${XRAY_PORT},
-            "listen": "127.0.0.1",
-            "protocol": "vless",
-            "settings": {
-                "clients": [
-                    {
-                        "id": "$(xray uuid)",
-                        "flow": "xtls-rprx-vision",
-                        "email": "mtproto-user@telegram.org"
-                    }
-                ],
-                "decryption": "none"
-            },
-            "streamSettings": {
-                "network": "tcp",
-                "security": "none",
-                "tcpSettings": {
-                    "header": {
-                        "type": "none"
-                    },
-                    "acceptProxyProtocol": true
-                },
-                "sockopt": {
-                    "tcpFastOpen": true,
-                    "tcpNoDelay": true,
-                    "tcpKeepAliveIdle": 60,
-                    "tcpKeepAliveInterval": 30,
-                    "tcpKeepAliveCount": 3,
-                    "tcpCongestion": "bbr",
-                    "mark": 255
-                }
-            },
-            "sniffing": {
-                "enabled": true,
-                "destOverride": ["http", "tls", "quic"],
-                "metadataOnly": false
-            }
+    "inbounds": [{
+        "port": 10000,
+        "protocol": "vless",
+        "settings": {
+            "clients": [{
+                "id": "$(xray uuid)",
+                "flow": "xtls-rprx-vision"
+            }],
+            "decryption": "none"
         },
-        {
-            "port": ${FAKE_TLS_PORT},
-            "protocol": "vless",
-            "settings": {
-                "clients": [
-                    {
-                        "id": "$(xray uuid)",
-                        "flow": ""
-                    }
-                ]
+        "streamSettings": {
+            "network": "tcp",
+            "security": "reality",
+            "realitySettings": {
+                "dest": "www.google.com:443",
+                "serverNames": ["www.google.com", "www.cloudflare.com"],
+                "privateKey": "$(xray x25519 | awk '{print $3}')",
+                "shortIds": ["", "12345678"]
             },
-            "streamSettings": {
-                "network": "tcp",
-                "security": "tls",
-                "tlsSettings": {
-                    "serverName": "${DOMAIN}",
-                    "alpn": ["http/1.1", "h2"],
-                    "certificates": [
-                        {
-                            "certificateFile": "/etc/xray/fake-tls.crt",
-                            "keyFile": "/etc/xray/fake-tls.key"
-                        }
-                    ]
-                },
-                "tcpSettings": {
-                    "acceptProxyProtocol": true,
-                    "header": {
-                        "type": "http",
-                        "request": {
-                            "version": "1.1",
-                            "method": "GET",
-                            "path": ["/cdn-cgi/trace"],
-                            "headers": {
-                                "Host": ["${DOMAIN}"],
-                                "User-Agent": [
-                                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-                                ],
-                                "Accept-Encoding": ["gzip, deflate"],
-                                "Connection": ["keep-alive"]
-                            }
+            "tcpSettings": {
+                "header": {
+                    "type": "http",
+                    "request": {
+                        "version": "1.1",
+                        "method": "GET",
+                        "path": ["/"],
+                        "headers": {
+                            "Host": ["www.google.com", "www.cloudflare.com"],
+                            "User-Agent": [
+                                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
+                            ],
+                            "Accept-Encoding": ["gzip, deflate"],
+                            "Connection": ["keep-alive"],
+                            "Pragma": "no-cache"
                         }
                     }
                 }
+            },
+            "sockopt": {
+                "tcpFastOpen": true,
+                "tcpNoDelay": true,
+                "tcpKeepAliveIdle": 300,
+                "tcpKeepAliveInterval": 30,
+                "tcpKeepAliveCount": 3
             }
         }
-    ],
-    "outbounds": [
-        {
-            "protocol": "freedom",
-            "tag": "direct",
-            "settings": {
-                "domainStrategy": "UseIPv4"
-            },
-            "streamSettings": {
-                "sockopt": {
-                    "mark": 255
-                }
-            }
-        },
-        {
-            "protocol": "mtproto",
-            "tag": "mtproto-out",
-            "settings": {
-                "users": [
-                    {
-                        "secret": "$(openssl rand -hex 32)"
-                    }
-                ]
+    }],
+    "outbounds": [{
+        "protocol": "freedom",
+        "settings": {},
+        "streamSettings": {
+            "sockopt": {
+                "mark": 255
             }
         }
-    ],
-    "routing": {
-        "domainStrategy": "IPIfNonMatch",
-        "domainMatcher": "hybrid",
-        "rules": [
-            {
-                "type": "field",
-                "inboundTag": ["default"],
-                "outboundTag": "direct"
-            },
-            {
-                "type": "field",
-                "protocol": ["bittorrent"],
-                "outboundTag": "direct"
-            },
-            {
-                "type": "field",
-                "ip": ["geoip:telegram"],
-                "outboundTag": "mtproto-out"
-            },
-            {
-                "type": "field",
-                "domain": ["geosite:telegram"],
-                "outboundTag": "mtproto-out"
-            }
-        ]
-    },
+    }],
     "policy": {
         "levels": {
             "0": {
@@ -366,596 +251,164 @@ setup_xray_mtproto() {
                 "connIdle": 120,
                 "uplinkOnly": 0,
                 "downlinkOnly": 0,
-                "bufferSize": 16384
+                "bufferSize": 4096
             }
         }
     }
 }
 EOF
-    
-    # Generate fake TLS certificates for Xray
-    openssl req -new -newkey rsa:2048 -days 365 -nodes -x509 \
-        -subj "/C=US/ST=California/L=San Francisco/O=Cloudflare, Inc./CN=${DOMAIN}" \
-        -keyout /etc/xray/fake-tls.key \
-        -out /etc/xray/fake-tls.crt
-    
-    # Create Xray wrapper for MTProto optimization
-    cat > /usr/local/bin/xray-mtproto-wrapper.sh << 'EOF'
-#!/bin/bash
-# Xray Wrapper optimized for MTProto
-
-# Enable BBR
-echo "net.core.default_qdisc = fq" >> /etc/sysctl.conf
-echo "net.ipv4.tcp_congestion_control = bbr" >> /etc/sysctl.conf
-sysctl -p
-
-# Increase file descriptors
-ulimit -n 1048576
-
-# Set NICQUEUE
-ethtool -K $INTERFACE tso on gso on gro on 2>/dev/null || true
-
-# Start Xray with optimized parameters
-exec /usr/local/bin/xray run \
-    -config /usr/local/etc/xray/config_mtproto.json \
-    -format json \
-    -loglevel error \
-    -stats none \
-    -restart 0 \
-    "$@"
-EOF
-    
-    chmod +x /usr/local/bin/xray-mtproto-wrapper.sh
-    
-    # Create systemd service for Xray
-    cat > /etc/systemd/system/xray-mtproto.service << EOF
-[Unit]
-Description=Xray MTProto Proxy
-After=network.target mtproxy.service
-Requires=mtproxy.service
-
-[Service]
-Type=simple
-User=nobody
-Group=nogroup
-LimitNOFILE=1048576
-LimitNPROC=1048576
-LimitCORE=infinity
-ExecStart=/usr/local/bin/xray-mtproto-wrapper.sh
-ExecReload=/bin/kill -HUP \$MAINPID
-Restart=always
-RestartSec=3
-
-# Security
-NoNewPrivileges=yes
-PrivateTmp=yes
-PrivateDevices=yes
-ProtectSystem=strict
-ProtectHome=yes
-
-# Performance
-CPUSchedulingPolicy=rr
-CPUSchedulingPriority=10
-Nice=-5
-OOMScoreAdjust=-500
-IOSchedulingClass=best-effort
-IOSchedulingPriority=0
-
-[Install]
-WantedBy=multi-user.target
-EOF
 }
 
-# =====================================================
-# MODULE 3: TRAFFIC SHAPING & ANTI-DPI
-# =====================================================
-setup_traffic_shaping_mtproto() {
-    echo -e "${BLUE}[*] Setting up Traffic Shaping for MTProto...${NC}"
+# ==========================================
+# MODULE 6: TRAFFIC SHAPING & RANDOMIZATION
+# ==========================================
+setup_traffic_shaping() {
+    echo -e "${BLUE}[*] Setting up Traffic Shaping...${NC}"
     
-    # Install traffic control tools
-    apt-get install -y tc iproute2 conntrack
-    
-    # Create advanced traffic shaping script
-    cat > /usr/local/bin/mtproto-traffic-shape.sh << 'EOF'
+    # Create random traffic patterns
+    cat > /usr/local/bin/traffic_randomizer.sh << 'EOF'
 #!/bin/bash
-# Advanced Traffic Shaping for MTProto
-
-INTERFACE=$(ip route | grep default | awk '{print $5}' | head -1)
-
-# Clear existing rules
-tc qdisc del dev $INTERFACE root 2>/dev/null || true
-
-# Create HTB hierarchy
-tc qdisc add dev $INTERFACE root handle 1: htb default 30
-
-# Root class
-tc class add dev $INTERFACE parent 1: classid 1:1 htb rate 1000mbit ceil 1000mbit
-
-# Sub-classes for different traffic types
-# 1: MTProto traffic (priority)
-tc class add dev $INTERFACE parent 1:1 classid 1:10 htb rate 800mbit ceil 1000mbit prio 0 burst 15k cburst 15k
-# 2: Xray traffic
-tc class add dev $INTERFACE parent 1:1 classid 1:20 htb rate 150mbit ceil 300mbit prio 1 burst 10k cburst 10k
-# 3: Other traffic
-tc class add dev $INTERFACE parent 1:1 classid 1:30 htb rate 50mbit ceil 100mbit prio 2 burst 5k cburst 5k
-
-# Add FQ_CODEL for each class
-tc qdisc add dev $INTERFACE parent 1:10 handle 10: fq_codel quantum 300 limit 10240 flows 1024 noecn
-tc qdisc add dev $INTERFACE parent 1:20 handle 20: fq_codel quantum 600 limit 20480 flows 2048 ecn
-tc qdisc add dev $INTERFACE parent 1:30 handle 30: fq_codel quantum 1500 limit 40960 flows 4096 noecn
-
-# Mark packets (MTProto uses port 443, Xray uses 8443)
-iptables -t mangle -A OUTPUT -p tcp --sport 443 -j MARK --set-mark 10
-iptables -t mangle -A OUTPUT -p tcp --sport 8443 -j MARK --set-mark 20
-iptables -t mangle -A OUTPUT -p tcp --sport 2053 -j MARK --set-mark 20
-
-# Apply marks to classes
-tc filter add dev $INTERFACE parent 1: protocol ip prio 1 handle 10 fw flowid 1:10
-tc filter add dev $INTERFACE parent 1: protocol ip prio 2 handle 20 fw flowid 1:20
-
-# Add netem for randomization (only for non-MTProto traffic)
-tc qdisc add dev $INTERFACE parent 1:20 handle 200: netem delay 10ms 5ms 25% distribution normal
-tc qdisc add dev $INTERFACE parent 1:30 handle 300: netem delay 20ms 10ms 50% distribution pareto
-
-echo "Traffic shaping applied to $INTERFACE"
-EOF
-    
-    chmod +x /usr/local/bin/mtproto-traffic-shape.sh
-    
-    # Create packet randomizer
-    cat > /usr/local/bin/packet-randomizer.sh << 'EOF'
-#!/bin/bash
-# Packet-level Randomization
-
+# Traffic Pattern Randomizer
 while true; do
-    # Randomize TTL
-    NEW_TTL=$((64 + RANDOM % 64))
-    iptables -t mangle -A POSTROUTING -j TTL --ttl-set $NEW_TTL 2>/dev/null || \
-    iptables -t mangle -C POSTROUTING -j TTL --ttl-set $NEW_TTL 2>/dev/null || \
-    iptables -t mangle -R POSTROUTING 1 -j TTL --ttl-set $NEW_TTL
+    # Random delay between packets (5-25ms)
+    DELAY=$((5 + RANDOM % 20))
+    # Random packet loss (0.01% - 0.5%)
+    LOSS=$(echo "scale=2; $RANDOM / 32767 * 0.5" | bc)
+    # Random duplicate packets (0.1% - 1%)
+    DUPLICATE=$(echo "scale=2; $RANDOM / 32767 * 1" | bc)
     
-    # Randomize TCP timestamp
-    if [ $((RANDOM % 2)) -eq 0 ]; then
-        iptables -t mangle -A OUTPUT -p tcp -j TCPOPTSTRIP --strip-options timestamp
-    else
-        iptables -t mangle -D OUTPUT -p tcp -j TCPOPTSTRIP --strip-options timestamp 2>/dev/null || true
-    fi
+    # Apply to GRE interface
+    tc qdisc change dev gre1 root netem \
+        delay ${DELAY}ms \
+        loss ${LOSS}% \
+        duplicate ${DUPLICATE}% \
+        distribution normal
     
-    # Randomize MSS
-    NEW_MSS=$((1220 + RANDOM % 100 - 50))
-    iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss $NEW_MSS 2>/dev/null || \
-    iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss $NEW_MSS 2>/dev/null || \
-    iptables -t mangle -R FORWARD 1 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss $NEW_MSS
-    
-    sleep $((300 + RANDOM % 600))  # 5-15 minutes
+    # Change every 5-15 minutes
+    SLEEP_TIME=$((300 + RANDOM % 600))
+    sleep $SLEEP_TIME
 done
 EOF
     
-    chmod +x /usr/local/bin/packet-randomizer.sh
-}
-
-# =====================================================
-# MODULE 4: FAKE TRAFFIC GENERATOR
-# =====================================================
-setup_fake_traffic() {
-    echo -e "${BLUE}[*] Setting up Fake Traffic Generator...${NC}"
+    chmod +x /usr/local/bin/traffic_randomizer.sh
     
-    cat > /usr/local/bin/fake-telegram-traffic.sh << 'EOF'
+    # Create burst traffic generator
+    cat > /usr/local/bin/burst_generator.sh << 'EOF'
 #!/bin/bash
-# Generate realistic Telegram-like traffic patterns
-
-TELEGRAM_IPS=(
-    "91.108.4.0/22"
-    "91.108.8.0/22"
-    "91.108.12.0/22"
-    "91.108.16.0/22"
-    "91.108.56.0/22"
-    "149.154.160.0/20"
-    "2001:67c:4e8::/48"
-)
-
-generate_telegram_packets() {
-    while true; do
-        # Simulate Telegram MTProto handshake
-        for ip_range in "${TELEGRAM_IPS[@]}"; do
-            # Generate random IP from range
-            IP=$(./ipgen.sh $ip_range)
-            
-            # Send fake MTProto packet (56 bytes like real MTProto)
-            echo -ne "\x00\x00\x00\x00\x00\x00\x00\x00" | \
-            timeout 0.5 nc -u $IP 443 2>/dev/null &
-            
-            # Random delay between packets (10-100ms)
-            sleep 0.0$((10 + RANDOM % 90))
-        done
-        
-        # Sleep between bursts (1-5 seconds)
-        sleep $((1 + RANDOM % 4))
-    done
-}
-
-generate_http_masquerade() {
-    while true; do
-        # Generate HTTP/HTTPS traffic to CDN domains
-        DOMAINS=(
-            "cdn.telegram.org"
-            "api.telegram.org"
-            "www.google.com"
-            "www.cloudflare.com"
-            "www.microsoft.com"
-        )
-        
-        for domain in "${DOMAINS[@]}"; do
-            # HTTP GET request
-            curl -s -H "User-Agent: TelegramBot/1.0" \
-                 -H "Accept: */*" \
-                 -H "Connection: keep-alive" \
-                 "https://$domain/" > /dev/null &
-            
-            # DNS query
-            dig @1.1.1.1 $domain +short > /dev/null &
-            
-            sleep 0.$((100 + RANDOM % 400))
-        done
-        
-        sleep $((10 + RANDOM % 20))
-    done
-}
-
-# Start both generators
-generate_telegram_packets &
-generate_http_masquerade &
+# Generate legitimate-looking burst traffic
+while true; do
+    # Random intervals (30-120 seconds)
+    INTERVAL=$((30 + RANDOM % 90))
+    
+    # Generate HTTPS-like traffic
+    curl -s -H "User-Agent: Mozilla/5.0" \
+         -H "Accept: text/html,application/xhtml+xml" \
+         -H "Connection: keep-alive" \
+         https://www.cloudflare.com/cdn-cgi/trace > /dev/null &
+    
+    # Small ICMP bursts
+    ping -c $((2 + RANDOM % 5)) -i 0.2 -s $((64 + RANDOM % 500)) 1.1.1.1 > /dev/null &
+    
+    sleep $INTERVAL
+done
 EOF
     
-    # Create IP generator helper
-    cat > /usr/local/bin/ipgen.sh << 'EOF'
-#!/bin/bash
-# Generate random IP from CIDR
-
-cidr_to_mask() {
-    local mask=$((0xffffffff << (32 - $1)))
-    echo $(( (mask >> 24) & 0xff )).$(( (mask >> 16) & 0xff )).$(( (mask >> 8) & 0xff )).$(( mask & 0xff ))
+    chmod +x /usr/local/bin/burst_generator.sh
 }
 
-IFS='/' read -r ip bits <<< "$1"
-IFS='.' read -r i1 i2 i3 i4 <<< "$ip"
-
-mask=$(cidr_to_mask $bits)
-IFS='.' read -r m1 m2 m3 m4 <<< "$mask"
-
-# Calculate network and broadcast
-nw=$(( (i1 & m1) | (i2 & m2) << 8 | (i3 & m3) << 16 | (i4 & m4) << 24 ))
-bc=$(( nw | (0xffffffff >> bits) ))
-
-# Generate random IP in range
-rand_ip=$(( nw + RANDOM % (bc - nw + 1) ))
-
-# Convert back to dotted decimal
-printf "%d.%d.%d.%d\n" \
-    $(( (rand_ip >> 24) & 0xff )) \
-    $(( (rand_ip >> 16) & 0xff )) \
-    $(( (rand_ip >> 8) & 0xff )) \
-    $(( rand_ip & 0xff ))
-EOF
+# ==========================================
+# MODULE 7: DPI EVASION TECHNIQUES
+# ==========================================
+apply_dpi_evasion() {
+    echo -e "${BLUE}[*] Applying DPI Evasion Techniques...${NC}"
     
-    chmod +x /usr/local/bin/fake-telegram-traffic.sh
-    chmod +x /usr/local/bin/ipgen.sh
+    # 1. TCP Window Size Randomization
+    iptables -t mangle -A POSTROUTING -p tcp -j TCPOPTSTRIP --strip-options wscale
+    
+    # 2. TTL Normalization
+    iptables -t mangle -A POSTROUTING -j TTL --ttl-set 64
+    
+    # 3. MSS Clamping with randomization
+    MSS_BASE=1220
+    MSS_RANDOM=$((MSS_BASE + RANDOM % 50 - 25))
+    iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss $MSS_RANDOM
+    
+    # 4. Packet Length Randomization
+    iptables -t mangle -A POSTROUTING -p tcp -m length --length 40:1500 -j NFQUEUE --queue-num 0
+    
+    # 5. Disable TCP Timestamps
+    echo 0 > /proc/sys/net/ipv4/tcp_timestamps
+    
+    # 6. Randomize TCP sequence numbers
+    echo 1 > /proc/sys/net/ipv4/tcp_challenge_ack_limit
+    echo "net.ipv4.tcp_challenge_ack_limit = 999999999" >> /etc/sysctl.conf
 }
 
-# =====================================================
-# MODULE 5: VXLAN TUNNEL FOR MTPROTO
-# =====================================================
-setup_vxlan_for_mtproto() {
-    echo -e "${BLUE}[*] Setting up VXLAN Tunnel for MTProto...${NC}"
-    
-    # Create VXLAN tunnel
-    VXLAN_ID=$((RANDOM % 10000))
-    LOCAL_VXLAN_IP="10.100.0.1"
-    REMOTE_VXLAN_IP="10.100.0.2"
-    
-    # Detect main interface
-    MAIN_IFACE=$(ip route | grep default | awk '{print $5}' | head -1)
-    
-    # Create VXLAN interface
-    ip link add vxlan0 type vxlan \
-        id $VXLAN_ID \
-        dev $MAIN_IFACE \
-        dstport 4789 \
-        local $IRAN_IP \
-        remote $KHAREJ_IP \
-        ttl 64
-    
-    ip addr add $LOCAL_VXLAN_IP/24 dev vxlan0
-    ip link set vxlan0 mtu 1450
-    ip link set vxlan0 up
-    
-    # Optimize VXLAN
-    echo 1 > /proc/sys/net/ipv4/conf/vxlan0/rp_filter
-    echo 0 > /proc/sys/net/ipv4/conf/vxlan0/accept_redirects
-    echo 0 > /proc/sys/net/ipv4/conf/vxlan0/send_redirects
-    
-    # Bridge MTProto through VXLAN
-    iptables -t nat -A PREROUTING -i $MAIN_IFACE -p tcp --dport 443 -j DNAT --to-destination $REMOTE_VXLAN_IP:443
-    iptables -t nat -A PREROUTING -i $MAIN_IFACE -p tcp --dport 8443 -j DNAT --to-destination $REMOTE_VXLAN_IP:8443
-    iptables -t nat -A POSTROUTING -o vxlan0 -j MASQUERADE
-    
-    # Create VXLAN optimization script
-    cat > /usr/local/bin/optimize-vxlan.sh << 'EOF'
-#!/bin/bash
-# Optimize VXLAN for MTProto
-
-# Increase buffer sizes
-echo 16777216 > /proc/sys/net/core/rmem_max
-echo 16777216 > /proc/sys/net/core/wmem_max
-echo 4096 87380 16777216 > /proc/sys/net/ipv4/tcp_rmem
-echo 4096 65536 16777216 > /proc/sys/net/ipv4/tcp_wmem
-
-# Enable TCP timestamps and window scaling
-echo 1 > /proc/sys/net/ipv4/tcp_timestamps
-echo 1 > /proc/sys/net/ipv4/tcp_window_scaling
-
-# Increase connection tracking
-echo 2097152 > /proc/sys/net/netfilter/nf_conntrack_max
-echo 120 > /proc/sys/net/netfilter/nf_conntrack_tcp_timeout_established
-
-# Optimize for high throughput
-echo 0 > /proc/sys/net/ipv4/tcp_slow_start_after_idle
-echo 1 > /proc/sys/net/ipv4/tcp_mtu_probing
-echo "bbr" > /proc/sys/net/ipv4/tcp_congestion_control
-EOF
-    
-    chmod +x /usr/local/bin/optimize-vxlan.sh
-}
-
-# =====================================================
-# MODULE 6: MONITORING & AUTO-HEALING
-# =====================================================
-setup_monitoring_mtproto() {
+# ==========================================
+# MODULE 8: MONITORING & AUTO-RECOVERY
+# ==========================================
+setup_monitoring() {
     echo -e "${BLUE}[*] Setting up Monitoring System...${NC}"
     
-    cat > /usr/local/bin/mtproto-monitor.sh << 'EOF'
+    cat > /usr/local/bin/tunnel_doctor.sh << 'EOF'
 #!/bin/bash
-# MTProto Health Monitor
+# Tunnel Health Monitoring & Auto-Recovery
 
-check_mtproto() {
-    # Check if MTProxy is running
-    if ! pgrep -f "mtproto-proxy" > /dev/null; then
-        echo "[$(date)] MTProto proxy not running, restarting..."
-        systemctl restart mtproxy
-        return 1
-    fi
-    
-    # Check port connectivity
-    if ! timeout 2 nc -z localhost 443; then
-        echo "[$(date)] Port 443 not responding, restarting..."
-        systemctl restart mtproxy
-        return 1
-    fi
-    
-    # Check Xray integration
-    if ! timeout 2 nc -z localhost 8443; then
-        echo "[$(date)] Xray port not responding, restarting..."
-        systemctl restart xray-mtproto
-        return 1
-    fi
-    
-    return 0
-}
+HEALTH_CHECKS=(
+    "ping -c 2 -W 1 $REMOTE_GRE_IP"
+    "wg show wg0 latest-handshakes"
+    "ss -tunlp | grep ':443'"
+    "curl -s --connect-timeout 3 http://1.1.1.1/cdn-cgi/trace"
+)
 
-check_bandwidth() {
-    # Monitor bandwidth usage
-    BW_THRESHOLD=50000000  # 50 Mbps
-    
-    CURRENT_BW=$(iftop -i $INTERFACE -t -s 1 2>/dev/null | \
-                 grep "Total send rate" | \
-                 awk '{print $6}' | \
-                 sed 's/Kb//;s/Mb/*1000/;s/Gb/*1000000/' | \
-                 bc 2>/dev/null || echo 0)
-    
-    if [ $CURRENT_BW -gt $BW_THRESHOLD ]; then
-        echo "[$(date)] High bandwidth detected ($CURRENT_BW bps), rotating secret..."
-        systemctl restart mtproxy
-    fi
-}
-
-check_dpi() {
-    # Check for DPI interference
-    if tcpdump -i $INTERFACE -c 10 'tcp[13] & 4 != 0' 2>/dev/null | grep -q "R"; then
-        echo "[$(date)] RST packets detected, possible DPI, changing ports..."
-        
-        # Rotate ports
-        PORTS=(443 8443 2053 8080 8888)
-        NEW_PORT=${PORTS[$RANDOM % ${#PORTS[@]}]}
-        
-        sed -i "s/port = .*/port = $NEW_PORT/" /etc/mtproxy.conf
-        sed -i "s/\"port\": .*/\"port\": $NEW_PORT,/" /usr/local/etc/xray/config_mtproto.json
-        
-        systemctl restart mtproxy
-        systemctl restart xray-mtproto
-    fi
-}
-
-# Main monitoring loop
 while true; do
-    check_mtproto
-    check_bandwidth
-    check_dpi
+    FAILURES=0
     
-    # Random sleep to avoid pattern
-    sleep $((30 + RANDOM % 60))
+    for check in "${HEALTH_CHECKS[@]}"; do
+        if ! eval $check > /dev/null 2>&1; then
+            FAILURES=$((FAILURES + 1))
+        fi
+    done
+    
+    if [ $FAILURES -ge 2 ]; then
+        echo "[$(date)] Tunnel unhealthy. Performing recovery..."
+        
+        # Rotate IPs if available
+        if [ -f "/root/ip_pool.txt" ]; then
+            NEW_IP=$(shuf -n 1 /root/ip_pool.txt)
+            ip addr add $NEW_IP/24 dev $INTERFACE
+        fi
+        
+        # Restart services in random order
+        SERVICES=(wg-quick@wg0 xray shadowsocks-libev@obfs)
+        for service in "${SERVICES[@]}"; do
+            systemctl restart ${service} 2>/dev/null
+            sleep $((RANDOM % 5))
+        done
+        
+        # Change obfs pattern
+        OBFSPATHS=("/cdn-cgi/trace" "/api/v1/ping" "/static/health" "/metrics")
+        NEW_PATH=${OBFSPATHS[$RANDOM % ${#OBFSPATHS[@]}]}
+        sed -i "s|path\": \".*\"|path\": \"$NEW_PATH\"|" /etc/v2ray-plugin/config.json
+    fi
+    
+    sleep 60
 done
 EOF
     
-    chmod +x /usr/local/bin/mtproto-monitor.sh
-    
-    # Create systemd service for monitor
-    cat > /etc/systemd/system/mtproto-monitor.service << EOF
-[Unit]
-Description=MTProto Health Monitor
-After=network.target mtproxy.service
-
-[Service]
-Type=simple
-ExecStart=/usr/local/bin/mtproto-monitor.sh
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-EOF
+    chmod +x /usr/local/bin/tunnel_doctor.sh
 }
 
-# =====================================================
-# MODULE 7: CLIENT CONFIGURATION GENERATOR
-# =====================================================
-generate_client_configs() {
-    echo -e "${BLUE}[*] Generating Client Configurations...${NC}"
-    
-    # Extract secrets
-    MTPROTO_SECRET=$(grep "secret = " /etc/mtproxy.conf | awk '{print $3}')
-    XRAY_UUID=$(grep -o '"id": "[^"]*"' /usr/local/etc/xray/config_mtproto.json | head -1 | cut -d'"' -f4)
-    
-    # Generate MTProto client config (for Telegram)
-    cat > /root/mtproto-client.conf << EOF
-# MTProto Client Configuration
-# Server: ${KHAREJ_IP}
-# Port: ${MTPROTO_PORT}
-# Secret: ${MTPROTO_SECRET}
-
-[proxy]
-server = ${KHAREJ_IP}
-port = ${MTPROTO_PORT}
-secret = ${MTPROTO_SECRET}
-enable-ipv6 = true
-fast-open = true
-tcp-no-delay = true
-tcp-keepalive = 60
-
-# Obfuscation
-obfuscation = true
-obfuscation-level = 2
-
-# Performance
-workers = 4
-msg-buffer-size = 65536
-read-buffer-size = 131072
-write-buffer-size = 131072
-EOF
-    
-    # Generate Xray client config
-    cat > /root/xray-mtproto-client.json << EOF
-{
-    "log": {"loglevel": "error"},
-    "inbounds": [
-        {
-            "port": 1080,
-            "listen": "127.0.0.1",
-            "protocol": "socks",
-            "settings": {
-                "auth": "noauth",
-                "udp": true
-            }
-        },
-        {
-            "port": 1081,
-            "listen": "127.0.0.1",
-            "protocol": "http",
-            "settings": {
-                "allowTransparent": false
-            }
-        }
-    ],
-    "outbounds": [
-        {
-            "protocol": "vless",
-            "settings": {
-                "vnext": [
-                    {
-                        "address": "${KHAREJ_IP}",
-                        "port": ${XRAY_PORT},
-                        "users": [
-                            {
-                                "id": "${XRAY_UUID}",
-                                "encryption": "none",
-                                "flow": "xtls-rprx-vision"
-                            }
-                        ]
-                    }
-                ]
-            },
-            "streamSettings": {
-                "network": "tcp",
-                "security": "none",
-                "tcpSettings": {
-                    "header": {
-                        "type": "none"
-                    }
-                },
-                "sockopt": {
-                    "tcpFastOpen": true,
-                    "tcpNoDelay": true
-                }
-            },
-            "tag": "proxy"
-        }
-    ],
-    "routing": {
-        "rules": [
-            {
-                "type": "field",
-                "ip": ["geoip:ir"],
-                "outboundTag": "proxy"
-            },
-            {
-                "type": "field",
-                "domain": ["geosite:telegram"],
-                "outboundTag": "proxy"
-            }
-        ]
-    }
-}
-EOF
-    
-    # Generate install script for clients
-    cat > /root/install-client.sh << 'EOF'
-#!/bin/bash
-# Client Installation Script
-
-echo "Installing MTProto + Xray Client..."
-
-# Install prerequisites
-apt-get update
-apt-get install -y curl wget git
-
-# Install Xray
-bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
-
-# Download client config
-wget -O /usr/local/etc/xray/config.json https://your-server.com/xray-mtproto-client.json
-
-# Start Xray
-systemctl enable xray
-systemctl start xray
-
-echo "Installation complete!"
-echo "SOCKS5 Proxy: 127.0.0.1:1080"
-echo "HTTP Proxy: 127.0.0.1:1081"
-EOF
-    
-    chmod +x /root/install-client.sh
-    
-    echo -e "${GREEN}[+] Client configurations generated in /root/${NC}"
-}
-
-# =====================================================
-# MAIN INSTALLATION FUNCTION
-# =====================================================
+# ==========================================
+# MAIN INSTALLATION SCRIPT
+# ==========================================
 main_installation() {
-    echo -e "${CYAN}"
+    clear
+    echo -e "${GREEN}"
     cat << "EOF"
 ╔══════════════════════════════════════════╗
-║   ADVANCED MTPROTO + XRAY INTEGRATION    ║
-║        (Anti-DPI & Anti-Throttle)        ║
+║   ADVANCED ANTI-DPI TUNNEL INSTALLER     ║
+║          (Multi-Layer Evasion)           ║
 ╚══════════════════════════════════════════╝
 EOF
     echo -e "${NC}"
@@ -963,130 +416,131 @@ EOF
     # Get configuration
     read -p "Enter Iran Server IP: " IRAN_IP
     read -p "Enter Kharej Server IP: " KHAREJ_IP
-    read -p "Enter Domain for Fake-TLS: " DOMAIN
-    read -p "Role (iran/kharej): " ROLE
+    read -p "Enter Main Interface (e.g., eth0): " INTERFACE
     
-    export IRAN_IP
-    export KHAREJ_IP
-    export DOMAIN
+    # Set variables
+    GRE_IFACE="gre1"
+    REMOTE_GRE_IP="10.255.255.2"
+    LOCAL_GRE_IP="10.255.255.1"
     
     # Update system
     apt-get update && apt-get upgrade -y
     
-    # Install common dependencies
+    # Install dependencies
     apt-get install -y \
-        build-essential \
-        libssl-dev \
-        zlib1g-dev \
-        libevent-dev \
-        python3 \
-        python3-pip \
-        cmake \
-        net-tools \
-        iptables \
-        iproute2 \
+        wireguard-tools \
+        xray \
+        shadowsocks-libev \
+        simple-obfs \
+        v2ray-plugin \
+        iperf3 \
         tcptraceroute \
         mtr \
+        net-tools \
         tcpdump \
+        conntrack \
         iftop \
         nethogs \
-        jq
+        jq \
+        bc
     
-    # Install based on role
-    if [ "$ROLE" = "kharej" ]; then
-        echo -e "${YELLOW}[*] Installing Kharej (Foreign) Server...${NC}"
-        setup_mtproto_proxy
-        setup_xray_mtproto
-        setup_fake_traffic
-        generate_client_configs
-    elif [ "$ROLE" = "iran" ]; then
-        echo -e "${YELLOW}[*] Installing Iran (Local) Server...${NC}"
-        setup_vxlan_for_mtproto
-        setup_traffic_shaping_mtproto
-    fi
+    # Execute modules
+    analyze_dpi_layer
+    analyze_xray_throttling
     
-    # Common setup
-    setup_monitoring_mtproto
+    # Setup GRE
+    echo -e "${BLUE}[*] Setting up GRE Tunnel...${NC}"
+    ip tunnel add $GRE_IFACE mode gre remote $KHAREJ_IP local $IRAN_IP ttl 255
+    ip addr add $LOCAL_GRE_IP/30 dev $GRE_IFACE
+    ip link set $GRE_IFACE mtu 1480
+    ip link set $GRE_IFACE up
     
-    # Start services
-    systemctl daemon-reload
+    # Apply optimizations
+    optimize_gre_transport
+    apply_dpi_evasion
+    setup_obfs_layer
+    optimize_xray_config
+    setup_traffic_shaping
+    setup_monitoring
     
-    if [ "$ROLE" = "kharej" ]; then
-        systemctl enable mtproxy xray-mtproto mtproto-monitor
-        systemctl start mtproxy xray-mtproto mtproto-monitor
-    fi
+    # Enable services
+    systemctl enable wg-quick@wg0
+    systemctl enable xray
+    systemctl enable shadowsocks-libev@obfs
+    systemctl enable tunnel-doctor
     
-    # Start traffic randomizer
-    nohup /usr/local/bin/packet-randomizer.sh > /dev/null 2>&1 &
-    
+    # Generate report
     echo -e "${GREEN}"
     cat << "EOF"
 ╔══════════════════════════════════════════╗
 ║         INSTALLATION COMPLETE           ║
 ╠══════════════════════════════════════════╣
-║ Layer 1: VXLAN Tunnel                    ║
-║ Layer 2: MTProto Proxy (Fake-TLS)       ║
-║ Layer 3: Xray (VLESS/Vision)            ║
-║ Layer 4: Traffic Randomization          ║
-║                                          ║
-║ Features:                                ║
-║ • Fake-TLS with Telegram domain         ║
-║ • Traffic shaping & prioritization      ║
-║ • Automatic port rotation               ║
-║ • Realistic traffic generation          ║
-║ • Health monitoring & auto-healing      ║
+║ Layer 1: GRE (Optimized MTU/Queue)      ║
+║ Layer 2: WireGuard (Obfuscated)         ║
+║ Layer 3: Shadowsocks (HTTP Obfs)        ║
+║ Layer 4: Xray (Reality + Vision)        ║
+║ Layer 5: Traffic Randomization          ║
+║                                         ║
+║ Features:                               ║
+║ • Automatic DPI Detection               ║
+║ • Bandwidth Throttle Analysis           ║
+║ • Traffic Pattern Randomization         ║
+║ • Auto-Recovery System                  ║
+║ • Multiple Obfuscation Layers           ║
 ╚══════════════════════════════════════════╝
 EOF
     echo -e "${NC}"
     
-    # Show summary
-    if [ "$ROLE" = "kharej" ]; then
-        echo -e "${YELLOW}[!] Server Information:${NC}"
-        echo "MTProto Port: ${MTPROTO_PORT}"
-        echo "Xray Port: ${XRAY_PORT}"
-        echo "Fake-TLS Port: ${FAKE_TLS_PORT}"
-        echo "Secret: $(grep 'secret = ' /etc/mtproxy.conf | awk '{print $3}')"
-        echo "Domain: ${DOMAIN}"
-    fi
+    # Show configuration
+    echo -e "${YELLOW}[!] Important Configuration:${NC}"
+    echo "GRE Tunnel: $LOCAL_GRE_IP ↔ $REMOTE_GRE_IP"
+    echo "WireGuard Port: 51820 (UDP)"
+    echo "Shadowsocks Port: 8443 (TCP+UDP)"
+    echo "Xray Port: 10000 (Reality)"
+    echo "Obfs Path: /cdn-cgi/trace"
+    
+    # Start services
+    systemctl start wg-quick@wg0
+    systemctl start xray
+    systemctl start shadowsocks-libev@obfs
+    systemctl start tunnel-doctor
 }
 
-# =====================================================
-# UNINSTALL FUNCTION
-# =====================================================
+# ==========================================
+# UNINSTALL SCRIPT
+# ==========================================
 uninstall_all() {
-    echo -e "${RED}[!] Uninstalling MTProto + Xray...${NC}"
+    echo -e "${RED}[!] Uninstalling everything...${NC}"
     
     # Stop services
-    systemctl stop mtproxy xray-mtproto mtproto-monitor 2>/dev/null
+    systemctl stop wg-quick@wg0 2>/dev/null
+    systemctl stop xray 2>/dev/null
+    systemctl stop shadowsocks-libev@obfs 2>/dev/null
     
     # Remove interfaces
-    ip link del vxlan0 2>/dev/null || true
+    ip link del gre1 2>/dev/null
+    ip link del wg0 2>/dev/null
     
     # Remove configurations
-    rm -rf /etc/mtproxy
-    rm -rf /tmp/MTProxy
-    rm -f /usr/local/etc/xray/config_mtproto.json
+    rm -rf /etc/wireguard
+    rm -rf /usr/local/etc/xray
+    rm -rf /etc/shadowsocks-libev
     
     # Remove scripts
-    rm -f /usr/local/bin/mtproxy-wrapper.sh
-    rm -f /usr/local/bin/xray-mtproto-wrapper.sh
-    rm -f /usr/local/bin/mtproto-traffic-shape.sh
-    rm -f /usr/local/bin/packet-randomizer.sh
-    rm -f /usr/local/bin/fake-telegram-traffic.sh
-    rm -f /usr/local/bin/mtproto-monitor.sh
+    rm -f /usr/local/bin/traffic_randomizer.sh
+    rm -f /usr/local/bin/burst_generator.sh
+    rm -f /usr/local/bin/tunnel_doctor.sh
     
-    # Remove systemd services
-    systemctl disable mtproxy xray-mtproto mtproto-monitor 2>/dev/null
-    rm -f /etc/systemd/system/mtproxy.service
-    rm -f /etc/systemd/system/xray-mtproto.service
-    rm -f /etc/systemd/system/mtproto-monitor.service
+    # Remove services
+    systemctl disable tunnel-doctor 2>/dev/null
+    rm -f /etc/systemd/system/tunnel-doctor.service
     
     echo -e "${GREEN}[✓] Uninstallation complete!${NC}"
 }
 
-# =====================================================
+# ==========================================
 # USAGE
-# =====================================================
+# ==========================================
 case "$1" in
     install)
         main_installation
@@ -1094,24 +548,21 @@ case "$1" in
     uninstall)
         uninstall_all
         ;;
+    doctor)
+        /usr/local/bin/tunnel_doctor.sh
+        ;;
     status)
-        echo -e "${BLUE}[*] Service Status:${NC}"
-        systemctl status mtproxy xray-mtproto --no-pager 2>/dev/null || echo "Services not running"
-        echo -e "\n${BLUE}[*] Network Status:${NC}"
-        ip link show vxlan0 2>/dev/null || echo "VXLAN not configured"
-        netstat -tulpn | grep -E ':443|:8443|:2053'
+        echo -e "${BLUE}[*] Tunnel Status:${NC}"
+        ip link show gre1
+        wg show
+        systemctl status xray --no-pager
         ;;
     optimize)
-        /usr/local/bin/optimize-vxlan.sh
-        /usr/local/bin/mtproto-traffic-shape.sh
-        echo -e "${GREEN}[✓] Optimization applied!${NC}"
-        ;;
-    client)
-        generate_client_configs
-        echo -e "${GREEN}[✓] Client configs generated in /root/${NC}"
+        optimize_gre_transport
+        apply_dpi_evasion
         ;;
     *)
-        echo "Usage: $0 {install|uninstall|status|optimize|client}"
+        echo "Usage: $0 {install|uninstall|doctor|status|optimize}"
         exit 1
         ;;
 esac
