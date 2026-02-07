@@ -1,7 +1,8 @@
 #!/bin/bash
-# ==========================================
-# Advanced Tunnel - Fixed IP Detection Issue
-# ==========================================
+# ============================================
+# Simple GRE Tunnel Setup for Iran & Kharej
+# No Xray installation - Only GRE Tunnel
+# ============================================
 
 set -e
 
@@ -12,519 +13,286 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-# ==========================================
-# FIXED IP DETECTION FUNCTION
-# ==========================================
-get_public_ip() {
-    echo -e "${YELLOW}[*] Detecting public IP...${NC}"
-    
-    # Try multiple methods to get public IP
-    local ip_methods=(
-        "curl -s https://api.ipify.org"
-        "curl -s https://icanhazip.com"
-        "curl -s https://checkip.amazonaws.com"
-        "curl -s https://ifconfig.me"
-        "curl -s https://ipinfo.io/ip"
-        "wget -qO- https://ipecho.net/plain"
-    )
-    
-    for method in "${ip_methods[@]}"; do
-        local ip=$($method 2>/dev/null)
-        # Check if result is a valid IP
-        if [[ $ip =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo -e "${GREEN}[✓] IP detected: $ip${NC}"
-            echo "$ip"
-            return 0
-        fi
-    done
-    
-    # If all methods fail, use local IP
-    local local_ip=$(ip route get 8.8.8.8 | grep -oP 'src \K\S+' | head -1)
-    if [[ $local_ip =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        echo -e "${YELLOW}[!] Using local IP: $local_ip${NC}"
-        echo "$local_ip"
-        return 0
-    fi
-    
-    # Last resort
-    echo -e "${RED}[!] Could not detect IP automatically${NC}"
-    echo "0.0.0.0"
-    return 1
-}
-
-# ==========================================
-# SIMPLE IRAN SERVER SETUP (FIXED)
-# ==========================================
-install_iran_simple() {
-    echo -e "${GREEN}"
-    echo "╔═══════════════════════════════╗"
-    echo "║   Iran Server Setup (Fixed)   ║"
-    echo "╚═══════════════════════════════╝"
-    echo -e "${NC}"
-    
-    # Get Iran server IP
-    IRAN_IP=$(get_public_ip)
-    if [ "$IRAN_IP" = "0.0.0.0" ]; then
-        read -p "Enter Iran Server Public IP: " IRAN_IP
-    fi
-    
-    # Get Kharej server IP
-    read -p "Enter Kharej Server Public IP: " KHAREJ_IP
-    
-    # Get network interface
-    INTERFACE=$(ip route | grep default | awk '{print $5}' | head -1)
-    echo -e "${BLUE}Using interface: $INTERFACE${NC}"
-    
-    # Update system
-    echo -e "${YELLOW}[*] Updating system...${NC}"
-    apt-get update && apt-get upgrade -y
-    
-    # Install essentials
-    echo -e "${YELLOW}[*] Installing dependencies...${NC}"
-    apt-get install -y \
-        iptables \
-        iptables-persistent \
-        iproute2 \
-        net-tools \
-        curl \
-        wget \
-        openssl
-    
-    # Clean old tunnels
-    echo -e "${YELLOW}[*] Cleaning old tunnels...${NC}"
-    ip link del gre0 2>/dev/null || true
-    ip link del gre1 2>/dev/null || true
-    ip link del mytunnel 2>/dev/null || true
-    
-    # Create GRE tunnel (SIMPLE AND RELIABLE)
-    echo -e "${YELLOW}[*] Creating GRE tunnel...${NC}"
-    
-    # First, verify IPs are valid
-    if [[ ! $IRAN_IP =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ ! $KHAREJ_IP =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        echo -e "${RED}[!] Invalid IP address format${NC}"
-        echo "Iran IP: $IRAN_IP"
-        echo "Kharej IP: $KHAREJ_IP"
-        exit 1
-    fi
-    
-    # Create tunnel
-    ip tunnel add mytunnel mode gre remote $KHAREJ_IP local $IRAN_IP ttl 255
-    ip addr add 10.100.100.1/30 dev mytunnel
-    ip link set mytunnel mtu 1476
-    ip link set mytunnel up
-    
-    # Enable IP forwarding
-    echo 1 > /proc/sys/net/ipv4/ip_forward
-    echo "net.ipv4.ip_forward = 1" >> /etc/sysctl.conf
-    sysctl -p
-    
-    # Configure iptables
-    echo -e "${YELLOW}[*] Configuring iptables...${NC}"
-    
-    # Clear existing rules
-    iptables -F
-    iptables -t nat -F
-    iptables -X
-    
-    # Set default policies
-    iptables -P INPUT ACCEPT
-    iptables -P FORWARD ACCEPT
-    iptables -P OUTPUT ACCEPT
-    
-    # Forward ports to GRE tunnel
-    iptables -t nat -A PREROUTING -i $INTERFACE -p tcp --dport 443 -j DNAT --to-destination 10.100.100.2
-    iptables -t nat -A PREROUTING -i $INTERFACE -p udp --dport 443 -j DNAT --to-destination 10.100.100.2
-    iptables -t nat -A PREROUTING -i $INTERFACE -p tcp --dport 8443 -j DNAT --to-destination 10.100.100.2
-    iptables -t nat -A PREROUTING -i $INTERFACE -p tcp --dport 2053 -j DNAT --to-destination 10.100.100.2
-    
-    # Masquerade outgoing traffic
-    iptables -t nat -A POSTROUTING -o mytunnel -j MASQUERADE
-    
-    # Save rules
-    apt-get install -y iptables-persistent
-    netfilter-persistent save 2>/dev/null || iptables-save > /etc/iptables/rules.v4
-    
-    # Optimize network
-    echo -e "${YELLOW}[*] Optimizing network...${NC}"
-    cat > /etc/sysctl.d/99-tunnel-optimize.conf << EOF
-net.core.rmem_max = 134217728
-net.core.wmem_max = 134217728
-net.ipv4.tcp_rmem = 4096 87380 134217728
-net.ipv4.tcp_wmem = 4096 65536 134217728
-net.ipv4.tcp_mtu_probing = 1
-net.ipv4.tcp_no_metrics_save = 1
-net.ipv4.tcp_slow_start_after_idle = 0
-net.ipv4.tcp_tw_reuse = 1
-net.ipv4.tcp_fastopen = 3
-EOF
-    sysctl -p /etc/sysctl.d/99-tunnel-optimize.conf
-    
-    # Create monitoring script
-    echo -e "${YELLOW}[*] Creating monitoring script...${NC}"
-    cat > /usr/local/bin/tunnel-monitor.sh << 'EOF'
-#!/bin/bash
-while true; do
-    echo "=== Tunnel Status $(date) ==="
-    
-    # Check tunnel
-    if ip link show mytunnel > /dev/null 2>&1; then
-        echo "✓ GRE tunnel is up"
-    else
-        echo "✗ GRE tunnel is down"
-    fi
-    
-    # Check connectivity
-    if ping -c 2 -W 1 10.100.100.2 > /dev/null 2>&1; then
-        echo "✓ Connected to remote"
-    else
-        echo "✗ Cannot reach remote"
-    fi
-    
-    echo "============================="
-    echo ""
-    sleep 60
-done
-EOF
-    
-    chmod +x /usr/local/bin/tunnel-monitor.sh
-    
-    # Display configuration
-    echo -e "${GREEN}"
-    cat << "EOF"
-╔══════════════════════════════════════════╗
-║        Iran Server Setup Complete!       ║
-╠══════════════════════════════════════════╣
-║ Configuration:                           ║
-║ • GRE Tunnel: 10.100.100.1/30           ║
-║ • Remote GRE: 10.100.100.2              ║
-║ • Interface: $INTERFACE                 ║
-║                                          ║
-║ Ports Forwarded:                         ║
-║ • TCP/UDP 443 → Kharej                  ║
-║ • TCP 8443 → Kharej                     ║
-║ • TCP 2053 → Kharej                     ║
-╚══════════════════════════════════════════╝
-EOF
-    echo -e "${NC}"
-    
-    echo -e "${YELLOW}[!] On Kharej server, run these commands:${NC}"
-    echo "=========================================="
-    echo "ip tunnel add mytunnel mode gre remote $IRAN_IP local $KHAREJ_IP ttl 255"
-    echo "ip addr add 10.100.100.2/30 dev mytunnel"
-    echo "ip link set mytunnel mtu 1476"
-    echo "ip link set mytunnel up"
-    echo "echo 1 > /proc/sys/net/ipv4/ip_forward"
-    echo "iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE"
-    echo "=========================================="
-    
-    # Start monitoring in background
-    nohup /usr/local/bin/tunnel-monitor.sh > /var/log/tunnel-monitor.log 2>&1 &
-    
-    echo -e "${GREEN}[✓] Iran server setup complete!${NC}"
-    echo -e "${YELLOW}Monitor logs: tail -f /var/log/tunnel-monitor.log${NC}"
-}
-
-# ==========================================
-# KHAREJ SERVER SETUP
-# ==========================================
-install_kharej_simple() {
-    echo -e "${GREEN}"
-    echo "╔═══════════════════════════════╗"
-    echo "║   Kharej Server Setup         ║"
-    echo "╚═══════════════════════════════╝"
-    echo -e "${NC}"
-    
-    # Get Kharej server IP
-    KHAREJ_IP=$(get_public_ip)
-    if [ "$KHAREJ_IP" = "0.0.0.0" ]; then
-        read -p "Enter Kharej Server Public IP: " KHAREJ_IP
-    fi
-    
-    # Get Iran server IP
-    read -p "Enter Iran Server Public IP: " IRAN_IP
-    
-    # Get network interface
-    INTERFACE=$(ip route | grep default | awk '{print $5}' | head -1)
-    echo -e "${BLUE}Using interface: $INTERFACE${NC}"
-    
-    # Update system
-    apt-get update && apt-get upgrade -y
-    
-    # Install Xray
-    echo -e "${YELLOW}[*] Installing Xray...${NC}"
-    bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
-    
-    # Generate UUID
-    UUID=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || openssl rand -hex 16)
-    
-    # Create Xray config
-    cat > /usr/local/etc/xray/config.json << EOF
-{
-    "log": {
-        "loglevel": "warning"
-    },
-    "inbounds": [
-        {
-            "port": 443,
-            "protocol": "vless",
-            "settings": {
-                "clients": [
-                    {
-                        "id": "$UUID",
-                        "flow": "xtls-rprx-vision"
-                    }
-                ],
-                "decryption": "none"
-            },
-            "streamSettings": {
-                "network": "tcp",
-                "security": "tls",
-                "tlsSettings": {
-                    "serverName": "www.microsoft.com",
-                    "alpn": ["http/1.1", "h2"],
-                    "certificates": [
-                        {
-                            "certificateFile": "/etc/xray/cert.pem",
-                            "keyFile": "/etc/xray/key.pem"
-                        }
-                    ]
-                }
-            }
-        },
-        {
-            "port": 8443,
-            "protocol": "vmess",
-            "settings": {
-                "clients": [
-                    {
-                        "id": "$UUID"
-                    }
-                ]
-            },
-            "streamSettings": {
-                "network": "ws",
-                "wsSettings": {
-                    "path": "/cdn-cgi/trace"
-                }
-            }
-        }
-    ],
-    "outbounds": [
-        {
-            "protocol": "freedom",
-            "settings": {}
-        }
-    ]
-}
-EOF
-    
-    # Generate certificate
-    mkdir -p /etc/xray
-    openssl req -new -newkey rsa:2048 -days 365 -nodes -x509 \
-        -subj "/C=US/ST=California/L=San Francisco/O=Microsoft Corporation/CN=www.microsoft.com" \
-        -keyout /etc/xray/key.pem \
-        -out /etc/xray/cert.pem
-    
-    # Create GRE tunnel
-    echo -e "${YELLOW}[*] Creating GRE tunnel...${NC}"
-    ip link del mytunnel 2>/dev/null || true
-    ip tunnel add mytunnel mode gre remote $IRAN_IP local $KHAREJ_IP ttl 255
-    ip addr add 10.100.100.2/30 dev mytunnel
-    ip link set mytunnel mtu 1476
-    ip link set mytunnel up
-    
-    # Enable forwarding
-    echo 1 > /proc/sys/net/ipv4/ip_forward
-    echo "net.ipv4.ip_forward = 1" >> /etc/sysctl.conf
-    
-    # Add routes for Iranian IP ranges (optional)
-    ip route add 192.168.0.0/16 via 10.100.100.1 dev mytunnel 2>/dev/null || true
-    ip route add 10.0.0.0/8 via 10.100.100.1 dev mytunnel 2>/dev/null || true
-    
-    # Masquerade
-    iptables -t nat -A POSTROUTING -o $INTERFACE -j MASQUERADE
-    
-    # Start Xray
-    systemctl enable xray
-    systemctl start xray
-    
-    echo -e "${GREEN}"
-    cat << "EOF"
-╔══════════════════════════════════════════╗
-║     Kharej Server Setup Complete!        ║
-╠══════════════════════════════════════════╣
-║ Services:                                ║
-║ • Xray on port 443 (VLESS+TLS)          ║
-║ • Xray on port 8443 (VMESS+WS)          ║
-║ • GRE Tunnel: 10.100.100.2/30           ║
-║                                          ║
-║ Connection Info:                         ║
-║ • Server: your-domain.com               ║
-║ • Port: 443                             ║
-║ • UUID: [see below]                     ║
-╚══════════════════════════════════════════╝
-EOF
-    echo -e "${NC}"
-    
-    echo -e "${YELLOW}UUID: $UUID${NC}"
-    echo -e "${YELLOW}Test connection: curl -I https://localhost:443${NC}"
-}
-
-# ==========================================
-# MANUAL IP ENTRY VERSION
-# ==========================================
-install_manual() {
-    echo -e "${YELLOW}[*] Manual Installation Mode${NC}"
-    
-    echo "Since automatic IP detection failed, please enter manually:"
-    read -p "Iran Server Public IP: " IRAN_IP
-    read -p "Kharej Server Public IP: " KHAREJ_IP
-    
-    # Validate IPs
-    if [[ ! $IRAN_IP =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ ! $KHAREJ_IP =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        echo -e "${RED}[!] Invalid IP format${NC}"
-        exit 1
-    fi
-    
-    echo -e "${GREEN}Iran IP: $IRAN_IP${NC}"
-    echo -e "${GREEN}Kharej IP: $KHAREJ_IP${NC}"
-    
-    read -p "Install which server? (iran/kharej): " SERVER_TYPE
-    
-    if [ "$SERVER_TYPE" = "iran" ]; then
-        export IRAN_IP KHAREJ_IP
-        install_iran_simple
-    elif [ "$SERVER_TYPE" = "kharej" ]; then
-        export KHAREJ_IP IRAN_IP
-        install_kharej_simple
-    else
-        echo "Invalid choice"
-        exit 1
-    fi
-}
-
-# ==========================================
-# TROUBLESHOOTING FUNCTIONS
-# ==========================================
-fix_ip_issue() {
-    echo -e "${YELLOW}[*] Fixing IP detection issue...${NC}"
-    
-    # Method 1: Try different DNS
-    echo "8.8.8.8" > /etc/resolv.conf
-    
-    # Method 2: Use local IP detection
-    LOCAL_IP=$(hostname -I | awk '{print $1}')
-    echo -e "${BLUE}Local IP: $LOCAL_IP${NC}"
-    
-    # Method 3: Ask user
-    read -p "Is this your public IP? [$LOCAL_IP] (y/n): " confirm
-    if [ "$confirm" = "y" ]; then
-        echo "$LOCAL_IP"
-    else
-        read -p "Please enter your public IP: " MANUAL_IP
-        echo "$MANUAL_IP"
-    fi
-}
-
-check_connectivity() {
-    echo -e "${YELLOW}[*] Checking connectivity...${NC}"
-    
-    # Test DNS
-    echo "1. Testing DNS..."
-    nslookup google.com 8.8.8.8 2>&1 | grep -q "Name" && echo "✓ DNS working" || echo "✗ DNS failed"
-    
-    # Test external connectivity
-    echo "2. Testing external connectivity..."
-    curl -s --connect-timeout 5 https://google.com > /dev/null && echo "✓ External access" || echo "✗ No external access"
-    
-    # Test IP services
-    echo "3. Testing IP detection services..."
-    SERVICES=("ipify.org" "icanhazip.com" "checkip.amazonaws.com")
-    for service in "${SERVICES[@]}"; do
-        echo -n "  $service: "
-        curl -s --connect-timeout 3 "https://$service" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' && echo "✓" || echo "✗"
-    done
-}
-
-# ==========================================
-# MAIN MENU
-# ==========================================
-main_menu() {
+# تابع نمایش منو
+show_menu() {
     clear
     echo -e "${GREEN}"
     echo "╔═══════════════════════════════╗"
-    echo "║   Advanced Tunnel Installer   ║"
+    echo "║   GRE Tunnel Setup Menu       ║"
     echo "╚═══════════════════════════════╝"
     echo -e "${NC}"
     
-    echo "1) Install Iran Server (Fixed)"
-    echo "2) Install Kharej Server"
-    echo "3) Manual IP Entry"
-    echo "4) Check Connectivity"
-    echo "5) Fix IP Detection"
-    echo "6) Exit"
+    echo "1) Setup Iran Server"
+    echo "2) Setup Kharej Server"
+    echo "3) Setup GRE Tunnel manually"
+    echo "4) Check tunnel status"
+    echo "5) Remove all tunnels"
+    echo "6) Test connection"
+    echo "7) Exit"
     echo ""
-    read -p "Select option [1-6]: " choice
+}
+
+# تنظیم سرور ایران
+setup_iran() {
+    echo -e "${YELLOW}[*] Setting up Iran Server...${NC}"
+    
+    echo "Enter IP addresses:"
+    read -p "Iran server public IP: " IRAN_IP
+    read -p "Kharej server public IP: " KHAREJ_IP
+    
+    # اعتبارسنجی IP
+    validate_ip $IRAN_IP
+    validate_ip $KHAREJ_IP
+    
+    # حذف تونل‌های قدیمی
+    clean_tunnels
+    
+    # ایجاد تونل GRE
+    echo -e "${BLUE}[*] Creating GRE tunnel...${NC}"
+    ip tunnel add gre1 mode gre remote $KHAREJ_IP local $IRAN_IP ttl 255
+    ip addr add 10.10.10.1/30 dev gre1
+    ip link set gre1 mtu 1476
+    ip link set gre1 up
+    
+    # فعال‌سازی IP forwarding
+    echo 1 > /proc/sys/net/ipv4/ip_forward
+    echo "net.ipv4.ip_forward = 1" >> /etc/sysctl.conf
+    sysctl -p 2>/dev/null || true
+    
+    # پیکربندی iptables
+    setup_iptables_iran
+    
+    echo -e "${GREEN}[✓] Iran server setup complete!${NC}"
+    echo ""
+    echo "Iran GRE IP: 10.10.10.1"
+    echo "Kharej GRE IP should be: 10.10.10.2"
+    echo ""
+    echo "On Kharej server run:"
+    echo "ip tunnel add gre1 mode gre remote $IRAN_IP local $KHAREJ_IP ttl 255"
+    echo "ip addr add 10.10.10.2/30 dev gre1"
+    echo "ip link set gre1 up"
+}
+
+# تنظیم سرور خارج
+setup_kharej() {
+    echo -e "${YELLOW}[*] Setting up Kharej Server...${NC}"
+    
+    echo "Enter IP addresses:"
+    read -p "Kharej server public IP: " KHAREJ_IP
+    read -p "Iran server public IP: " IRAN_IP
+    
+    # اعتبارسنجی IP
+    validate_ip $KHAREJ_IP
+    validate_ip $IRAN_IP
+    
+    # حذف تونل‌های قدیمی
+    clean_tunnels
+    
+    # ایجاد تونل GRE
+    echo -e "${BLUE}[*] Creating GRE tunnel...${NC}"
+    ip tunnel add gre1 mode gre remote $IRAN_IP local $KHAREJ_IP ttl 255
+    ip addr add 10.10.10.2/30 dev gre1
+    ip link set gre1 mtu 1476
+    ip link set gre1 up
+    
+    # فعال‌سازی IP forwarding
+    echo 1 > /proc/sys/net/ipv4/ip_forward
+    echo "net.ipv4.ip_forward = 1" >> /etc/sysctl.conf
+    sysctl -p 2>/dev/null || true
+    
+    # اضافه کردن route
+    ip route add 192.168.0.0/16 via 10.10.10.1 dev gre1 2>/dev/null || true
+    ip route add 10.0.0.0/8 via 10.10.10.1 dev gre1 2>/dev/null || true
+    
+    echo -e "${GREEN}[✓] Kharej server setup complete!${NC}"
+    echo ""
+    echo "Kharej GRE IP: 10.10.10.2"
+    echo "Iran GRE IP should be: 10.10.10.1"
+}
+
+# تنظیم دستی تونل
+setup_manual() {
+    echo -e "${YELLOW}[*] Manual GRE Tunnel Setup${NC}"
+    
+    read -p "Local IP address: " LOCAL_IP
+    read -p "Remote IP address: " REMOTE_IP
+    read -p "Local GRE IP [10.10.10.1]: " GRE_LOCAL
+    read -p "Remote GRE IP [10.10.10.2]: " GRE_REMOTE
+    
+    GRE_LOCAL=${GRE_LOCAL:-10.10.10.1}
+    GRE_REMOTE=${GRE_REMOTE:-10.10.10.2}
+    
+    # اعتبارسنجی
+    validate_ip $LOCAL_IP
+    validate_ip $REMOTE_IP
+    
+    # حذف تونل‌های قدیمی
+    clean_tunnels
+    
+    # ایجاد تونل
+    ip tunnel add gre1 mode gre remote $REMOTE_IP local $LOCAL_IP ttl 255
+    ip addr add $GRE_LOCAL/30 dev gre1
+    ip link set gre1 mtu 1476
+    ip link set gre1 up
+    
+    echo -e "${GREEN}[✓] Manual tunnel created${NC}"
+    echo "Local GRE: $GRE_LOCAL"
+    echo "Remote GRE: $GRE_REMOTE"
+}
+
+# بررسی وضعیت تونل
+check_status() {
+    echo -e "${YELLOW}[*] Tunnel Status${NC}"
+    echo "======================"
+    
+    # بررسی تونل‌ها
+    echo "Active GRE tunnels:"
+    ip tunnel show 2>/dev/null || echo "No tunnels found"
+    
+    echo ""
+    echo "Interface details:"
+    ip addr show | grep -A2 "gre\|tun" || echo "No tunnel interfaces"
+    
+    echo ""
+    echo "IP forwarding status:"
+    cat /proc/sys/net/ipv4/ip_forward
+    
+    echo ""
+    echo "Routing table (relevant):"
+    ip route | grep -E "gre|10\.10\.10\." || echo "No tunnel routes"
+}
+
+# حذف تونل‌ها
+remove_tunnels() {
+    echo -e "${RED}[*] Removing all tunnels...${NC}"
+    
+    # پیدا کردن و حذف تمام تونل‌های GRE
+    for tun in $(ip link show | grep -o "gre[0-9]*\|tun[0-9]*" | sort -u); do
+        echo "Removing tunnel: $tun"
+        ip link del $tun 2>/dev/null || true
+    done
+    
+    echo -e "${GREEN}[✓] All tunnels removed${NC}"
+}
+
+# تست اتصال
+test_connection() {
+    echo -e "${YELLOW}[*] Testing connection...${NC}"
+    
+    # تست تونل GRE
+    if ip link show gre1 &>/dev/null; then
+        echo "✓ GRE tunnel (gre1) exists"
+        
+        # دریافت IP تونل
+        GRE_IP=$(ip addr show gre1 | grep -o "inet [0-9./]*" | cut -d' ' -f2)
+        if [ -n "$GRE_IP" ]; then
+            echo "✓ GRE IP: $GRE_IP"
+            
+            # مشخص کردن IP طرف مقابل
+            if [[ $GRE_IP == *"10.10.10.1"* ]]; then
+                REMOTE_GRE="10.10.10.2"
+            else
+                REMOTE_GRE="10.10.10.1"
+            fi
+            
+            # تست ping
+            echo "Testing ping to $REMOTE_GRE..."
+            if ping -c 3 -W 2 $REMOTE_GRE &>/dev/null; then
+                echo "✓ Connected to remote GRE"
+            else
+                echo "✗ Cannot reach remote GRE"
+            fi
+        fi
+    else
+        echo "✗ No GRE tunnel found"
+    fi
+    
+    # تست IP forwarding
+    echo ""
+    echo "IP forwarding status: $(cat /proc/sys/net/ipv4/ip_forward)"
+}
+
+# پیکربندی iptables برای ایران
+setup_iptables_iran() {
+    # پیدا کردن اینترفیس اصلی
+    INTERFACE=$(ip route | grep default | awk '{print $5}' | head -1)
+    
+    # فوروارد پورت‌های مورد نیاز
+    echo -e "${BLUE}[*] Setting up iptables forwarding...${NC}"
+    
+    # پاک‌سازی قوانین قدیمی (اختیاری)
+    # iptables -F
+    # iptables -t nat -F
+    
+    # فوروارد پورت‌ها به طرف خارج
+    iptables -t nat -A PREROUTING -i $INTERFACE -p tcp --dport 443 -j DNAT --to-destination 10.10.10.2
+    iptables -t nat -A PREROUTING -i $INTERFACE -p udp --dport 443 -j DNAT --to-destination 10.10.10.2
+    iptables -t nat -A PREROUTING -i $INTERFACE -p tcp --dport 8443 -j DNAT --to-destination 10.10.10.2
+    
+    # MASQUERADE برای ترافیک خروجی از تونل
+    iptables -t nat -A POSTROUTING -o gre1 -j MASQUERADE
+    
+    echo -e "${GREEN}[✓] iptables configured${NC}"
+}
+
+# اعتبارسنجی IP
+validate_ip() {
+    local ip=$1
+    if [[ ! $ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+        echo -e "${RED}Error: Invalid IP address format: $ip${NC}"
+        exit 1
+    fi
+}
+
+# پاک‌سازی تونل‌های قدیمی
+clean_tunnels() {
+    ip link del gre1 2>/dev/null || true
+    ip link del gre0 2>/dev/null || true
+}
+
+# ============================================
+# شروع اجرای اسکریپت
+# ============================================
+
+# بررسی دسترسی root
+if [ "$EUID" -ne 0 ]; then 
+    echo -e "${RED}Please run as root${NC}"
+    exit 1
+fi
+
+# منوی اصلی
+while true; do
+    show_menu
+    read -p "Select option [1-7]: " choice
     
     case $choice in
         1)
-            install_iran_simple
+            setup_iran
             ;;
         2)
-            install_kharej_simple
+            setup_kharej
             ;;
         3)
-            install_manual
+            setup_manual
             ;;
         4)
-            check_connectivity
+            check_status
             ;;
         5)
-            fix_ip_issue
+            remove_tunnels
             ;;
         6)
+            test_connection
+            ;;
+        7)
             echo "Goodbye!"
             exit 0
             ;;
         *)
-            echo "Invalid option"
+            echo -e "${RED}Invalid option${NC}"
             ;;
     esac
     
     echo ""
     read -p "Press Enter to continue..."
-}
-
-# ==========================================
-# DIRECT COMMAND EXECUTION
-# ==========================================
-if [ $# -eq 0 ]; then
-    # No arguments, show menu
-    while true; do
-        main_menu
-    done
-else
-    # With arguments
-    case $1 in
-        iran)
-            install_iran_simple
-            ;;
-        kharej)
-            install_kharej_simple
-            ;;
-        manual)
-            install_manual
-            ;;
-        fix)
-            fix_ip_issue
-            ;;
-        check)
-            check_connectivity
-            ;;
-        *)
-            echo "Usage: $0 {iran|kharej|manual|fix|check}"
-            echo "Or run without arguments for menu"
-            exit 1
-            ;;
-    esac
-fi
+done
