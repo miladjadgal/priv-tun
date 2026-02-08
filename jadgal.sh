@@ -135,79 +135,180 @@ configure_relay() {
             done
             
             # ICMP Transmission Type with advanced stealth options
-            echo -e "\n\033[1;34mConfiguring ICMP Tunnel with Stealth Mode\033[0m"
+            echo -e "\n\033[1;34mConfiguring ICMP Tunnel\033[0m"
             TRANSMISSION="+icmp"
             
-            # Advanced ICMP stealth configuration
-            echo -e "\n\033[1;34m⚡ Advanced ICMP Stealth Settings\033[0m"
+            # Select Security Profile
+            echo -e "\n\033[1;34m🔒 Select Security Profile:\033[0m"
+            echo -e "\033[1;32m1.\033[0m Maximum Stealth (Recommended - Hardest to detect)"
+            echo -e "\033[1;32m2.\033[0m High Speed + Stealth (Balanced)"
+            echo -e "\033[1;32m3.\033[0m Ultra Security (Maximum obfuscation)"
+            echo -e "\033[1;32m4.\033[0m Custom Settings"
+            read -p $'\033[1;33mSelect profile (default: 1): \033[0m' profile_choice
+            profile_choice=${profile_choice:-1}
             
-            # Interval settings
-            echo -e "\033[1;36m1. Packet Interval Settings:\033[0m"
-            echo -e "   Random interval between packets (recommended: 200ms-5000ms)"
-            read -p $'\033[1;33mEnter min interval in ms (default: 200): \033[0m' interval_min
-            interval_min=${interval_min:-200}
-            read -p $'\033[1;33mEnter max interval in ms (default: 5000): \033[0m' interval_max
-            interval_max=${interval_max:-5000}
-            ICMP_INTERVAL="random,${interval_min}ms-${interval_max}ms"
-            
-            # Packet size settings
-            echo -e "\n\033[1;36m2. Packet Size Settings:\033[0m"
-            echo -e "   Random packet size (recommended: 64-512 bytes)"
-            read -p $'\033[1;33mEnter min size in bytes (default: 64): \033[0m' size_min
-            size_min=${size_min:-64}
-            read -p $'\033[1;33mEnter max size in bytes (default: 512): \033[0m' size_max
-            size_max=${size_max:-512}
-            ICMP_SIZE="random,${size_min}-${size_max}"
-            
-            # TTL settings
-            echo -e "\n\033[1;36m3. TTL Settings:\033[0m"
-            echo -e "   Random TTL values (recommended: 58-64)"
-            read -p $'\033[1;33mEnter min TTL (default: 58): \033[0m' ttl_min
-            ttl_min=${ttl_min:-58}
-            read -p $'\033[1;33mEnter max TTL (default: 64): \033[0m' ttl_max
-            ttl_max=${ttl_max:-64}
-            ICMP_TTL="random,${ttl_min}-${ttl_max}"
-            
-            # Encryption settings
-            echo -e "\n\033[1;36m4. Encryption Settings:\033[0m"
-            echo -e "   \033[1;32m1.\033[0m ChaCha20-Poly1305 (Fast, Recommended)"
-            echo -e "   \033[1;32m2.\033[0m AES-256-GCM (Strong)"
-            echo -e "   \033[1;32m3.\033[0m No encryption"
-            read -p $'\033[1;33mSelect encryption type (default: 1): \033[0m' cipher_choice
-            cipher_choice=${cipher_choice:-1}
-            
-            case $cipher_choice in
-                1) ICMP_CIPHER="chacha20-poly1305" ;;
-                2) ICMP_CIPHER="aes-256-gcm" ;;
-                3) ICMP_CIPHER="" ;;
-                *) ICMP_CIPHER="chacha20-poly1305" ;;
+            case $profile_choice in
+                1)  # Maximum Stealth
+                    echo -e "\033[1;32m✓ Selected: Maximum Stealth Profile\033[0m"
+                    
+                    # Advanced stealth with performance
+                    ICMP_INTERVAL="random,150ms-3000ms"
+                    ICMP_SIZE="random,84-548"
+                    ICMP_TTL="random,52-64"
+                    ICMP_CIPHER="chacha20-poly1305"
+                    ICMP_JITTER="&jitter=true&jitterMax=200ms"
+                    ICMP_PADDING="&padding=true&paddingMin=48&paddingMax=192"
+                    
+                    # Performance without compromising security
+                    COMPRESS_OPTION="compress=true"
+                    MUX_OPTION="mux=true&muxMaxStreams=50&muxBufferSize=32768"
+                    OPTIMIZATION_PARAMS="&windowSize=65535&bufferSize=32768&noDelay=true"
+                    
+                    # Advanced obfuscation
+                    OBFUSCATION_PARAMS="&trafficClass=0x00&dscp=0x00&mtu=576"
+                    
+                    # Behavioral mimicry
+                    BEHAVIOR_PARAMS="&rate=random,50k-200k&burst=5"
+                    ;;
+                    
+                2)  # High Speed + Stealth
+                    echo -e "\033[1;32m✓ Selected: High Speed + Stealth Profile\033[0m"
+                    
+                    ICMP_INTERVAL="random,100ms-1500ms"
+                    ICMP_SIZE="random,128-1024"
+                    ICMP_TTL="random,55-65"
+                    ICMP_CIPHER="aes-256-gcm"
+                    ICMP_JITTER="&jitter=true&jitterMax=150ms"
+                    ICMP_PADDING="&padding=true&paddingMin=32&paddingMax=128"
+                    
+                    # High performance settings
+                    COMPRESS_OPTION="compress=true&compressionLevel=3"
+                    MUX_OPTION="mux=true&muxMaxStreams=100&muxBufferSize=65536"
+                    OPTIMIZATION_PARAMS="&windowSize=131072&bufferSize=65536&noDelay=true&fastOpen=true"
+                    
+                    OBFUSCATION_PARAMS="&trafficClass=0x10&dscp=0x28&mtu=1500"
+                    BEHAVIOR_PARAMS="&rate=random,100k-500k&burst=10"
+                    ;;
+                    
+                3)  # Ultra Security
+                    echo -e "\033[1;32m✓ Selected: Ultra Security Profile\033[0m"
+                    
+                    # Extreme obfuscation
+                    ICMP_INTERVAL="random,200ms-8000ms"
+                    ICMP_SIZE="random,56-256"
+                    ICMP_TTL="random,48-72"
+                    ICMP_CIPHER="aes-256-gcm"
+                    ICMP_JITTER="&jitter=true&jitterMax=500ms&jitterMin=50ms"
+                    ICMP_PADDING="&padding=true&paddingMin=64&paddingMax=256&paddingRandom=true"
+                    
+                    # Stealth performance
+                    COMPRESS_OPTION="compress=true&compressionLevel=1"
+                    MUX_OPTION="mux=true&muxMaxStreams=30&muxBufferSize=16384"
+                    OPTIMIZATION_PARAMS="&windowSize=32768&bufferSize=16384"
+                    
+                    # Advanced obfuscation techniques
+                    OBFUSCATION_PARAMS="&trafficClass=0x00&dscp=0x00&mtu=576&fragment=true&fragmentSize=512"
+                    
+                    # Behavioral obfuscation
+                    BEHAVIOR_PARAMS="&rate=random,20k-100k&burst=3&pattern=random"
+                    
+                    # Add random packet loss simulation
+                    OBFUSCATION_PARAMS+="&loss=random,0.1-1.0"
+                    ;;
+                    
+                4)  # Custom Settings
+                    echo -e "\n\033[1;34m⚙️ Custom ICMP Settings:\033[0m"
+                    
+                    # Interval settings
+                    echo -e "\033[1;36m1. Packet Interval Settings:\033[0m"
+                    read -p $'\033[1;33mEnter min interval in ms (default: 150): \033[0m' interval_min
+                    interval_min=${interval_min:-150}
+                    read -p $'\033[1;33mEnter max interval in ms (default: 3000): \033[0m' interval_max
+                    interval_max=${interval_max:-3000}
+                    ICMP_INTERVAL="random,${interval_min}ms-${interval_max}ms"
+                    
+                    # Packet size settings
+                    echo -e "\n\033[1;36m2. Packet Size Settings:\033[0m"
+                    read -p $'\033[1;33mEnter min size in bytes (default: 84): \033[0m' size_min
+                    size_min=${size_min:-84}
+                    read -p $'\033[1;33mEnter max size in bytes (default: 548): \033[0m' size_max
+                    size_max=${size_max:-548}
+                    ICMP_SIZE="random,${size_min}-${size_max}"
+                    
+                    # TTL settings
+                    echo -e "\n\033[1;36m3. TTL Settings:\033[0m"
+                    read -p $'\033[1;33mEnter min TTL (default: 52): \033[0m' ttl_min
+                    ttl_min=${ttl_min:-52}
+                    read -p $'\033[1;33mEnter max TTL (default: 64): \033[0m' ttl_max
+                    ttl_max=${ttl_max:-64}
+                    ICMP_TTL="random,${ttl_min}-${ttl_max}"
+                    
+                    # Encryption settings
+                    echo -e "\n\033[1;36m4. Encryption Settings:\033[0m"
+                    echo -e "   \033[1;32m1.\033[0m ChaCha20-Poly1305 (Fast, Recommended)"
+                    echo -e "   \033[1;32m2.\033[0m AES-256-GCM (Strong)"
+                    echo -e "   \033[1;32m3.\033[0m No encryption"
+                    read -p $'\033[1;33mSelect encryption type (default: 1): \033[0m' cipher_choice
+                    cipher_choice=${cipher_choice:-1}
+                    
+                    case $cipher_choice in
+                        1) ICMP_CIPHER="chacha20-poly1305" ;;
+                        2) ICMP_CIPHER="aes-256-gcm" ;;
+                        3) ICMP_CIPHER="" ;;
+                        *) ICMP_CIPHER="chacha20-poly1305" ;;
+                    esac
+                    
+                    # Jitter settings
+                    echo -e "\n\033[1;36m5. Jitter Settings:\033[0m"
+                    read -p $'\033[1;33mEnable jitter? [y/n] (default: y): \033[0m' jitter_enable
+                    jitter_enable=${jitter_enable:-y}
+                    if [[ "$jitter_enable" == "y" || "$jitter_enable" == "yes" ]]; then
+                        read -p $'\033[1;33mEnter max jitter in ms (default: 200): \033[0m' jitter_max
+                        jitter_max=${jitter_max:-200}
+                        ICMP_JITTER="&jitter=true&jitterMax=${jitter_max}ms"
+                    else
+                        ICMP_JITTER=""
+                    fi
+                    
+                    # Padding settings
+                    echo -e "\n\033[1;36m6. Padding Settings:\033[0m"
+                    read -p $'\033[1;33mEnable random padding? [y/n] (default: y): \033[0m' padding_enable
+                    padding_enable=${padding_enable:-y}
+                    if [[ "$padding_enable" == "y" || "$padding_enable" == "yes" ]]; then
+                        read -p $'\033[1;33mEnter min padding size (default: 48): \033[0m' padding_min
+                        padding_min=${padding_min:-48}
+                        read -p $'\033[1;33mEnter max padding size (default: 192): \033[0m' padding_max
+                        padding_max=${padding_max:-192}
+                        ICMP_PADDING="&padding=true&paddingMin=${padding_min}&paddingMax=${padding_max}"
+                    else
+                        ICMP_PADDING=""
+                    fi
+                    
+                    # Compression
+                    echo -e "\n\033[1;36m7. Compression:\033[0m"
+                    read -p $'\033[1;33mEnable compression? [y/n] (default: y): \033[0m' compress_enable
+                    compress_enable=${compress_enable:-y}
+                    if [[ "$compress_enable" == "y" || "$compress_enable" == "yes" ]]; then
+                        COMPRESS_OPTION="compress=true"
+                    else
+                        COMPRESS_OPTION=""
+                    fi
+                    
+                    # Multiplexing
+                    echo -e "\n\033[1;36m8. Multiplexing:\033[0m"
+                    read -p $'\033[1;33mEnable multiplexing? [y/n] (default: y): \033[0m' mux_enable
+                    mux_enable=${mux_enable:-y}
+                    if [[ "$mux_enable" == "y" || "$mux_enable" == "yes" ]]; then
+                        MUX_OPTION="mux=true"
+                    else
+                        MUX_OPTION=""
+                    fi
+                    
+                    OPTIMIZATION_PARAMS=""
+                    OBFUSCATION_PARAMS=""
+                    BEHAVIOR_PARAMS=""
+                    ;;
             esac
-            
-            # Jitter settings
-            echo -e "\n\033[1;36m5. Jitter Settings:\033[0m"
-            read -p $'\033[1;33mEnable jitter? [y/n] (default: y): \033[0m' jitter_enable
-            jitter_enable=${jitter_enable:-y}
-            if [[ "$jitter_enable" == "y" || "$jitter_enable" == "yes" ]]; then
-                read -p $'\033[1;33mEnter max jitter in ms (default: 300): \033[0m' jitter_max
-                jitter_max=${jitter_max:-300}
-                ICMP_JITTER="&jitter=true&jitterMax=${jitter_max}ms"
-            else
-                ICMP_JITTER=""
-            fi
-            
-            # Padding settings
-            echo -e "\n\033[1;36m6. Padding Settings:\033[0m"
-            read -p $'\033[1;33mEnable random padding? [y/n] (default: y): \033[0m' padding_enable
-            padding_enable=${padding_enable:-y}
-            if [[ "$padding_enable" == "y" || "$padding_enable" == "yes" ]]; then
-                read -p $'\033[1;33mEnter min padding size (default: 32): \033[0m' padding_min
-                padding_min=${padding_min:-32}
-                read -p $'\033[1;33mEnter max padding size (default: 128): \033[0m' padding_max
-                padding_max=${padding_max:-128}
-                ICMP_PADDING="&padding=true&paddingMin=${padding_min}&paddingMax=${padding_max}"
-            else
-                ICMP_PADDING=""
-            fi
 
             # Ask about connection stability
             echo -e "\n\033[1;34m🔧 Connection Stability Settings\033[0m"
@@ -266,32 +367,15 @@ configure_relay() {
                 echo -e "   • Heartbeat: $HEARTBEAT_VALUE"
             fi
 
-            # Ask about compression
-            echo -e "\n\033[1;34mEnable Compression?\033[0m"
-            echo -e "\033[1;32m1.\033[0m Yes (Recommended for better performance)"
-            echo -e "\033[1;32m2.\033[0m No"
-            read -p $'\033[1;33mEnter your choice (default: 1): \033[0m' compress_choice
-            compress_choice=${compress_choice:-1}
+            # Ask about multi-path tunneling (increases speed and stealth)
+            echo -e "\n\033[1;34m🛤️ Multi-Path Tunneling:\033[0m"
+            echo -e "Create multiple parallel tunnels for increased speed and stealth?"
+            echo -e "\033[1;32m1.\033[0m Single tunnel (Default)"
+            echo -e "\033[1;32m2.\033[0m Dual tunnel (2 parallel connections)"
+            echo -e "\033[1;32m3.\033[0m Quad tunnel (4 parallel connections)"
+            read -p $'\033[1;33mSelect number of tunnels (default: 1): \033[0m' tunnel_choice
+            tunnel_choice=${tunnel_choice:-1}
             
-            if [[ "$compress_choice" == "1" ]]; then
-                COMPRESS_OPTION="compress=true"
-            else
-                COMPRESS_OPTION=""
-            fi
-
-            # Ask about multiplexing
-            echo -e "\n\033[1;34mEnable Multiplexing (mux)?\033[0m"
-            echo -e "\033[1;32m1.\033[0m Yes (Recommended for multiple connections)"
-            echo -e "\033[1;32m2.\033[0m No"
-            read -p $'\033[1;33mEnter your choice (default: 1): \033[0m' mux_choice
-            mux_choice=${mux_choice:-1}
-            
-            if [[ "$mux_choice" == "1" ]]; then
-                MUX_OPTION="mux=true"
-            else
-                MUX_OPTION=""
-            fi
-
             # Build GOST options with ICMP stealth parameters
             GOST_OPTIONS="-L relay${TRANSMISSION}://:${lport_relay}?bind=true"
             
@@ -331,16 +415,78 @@ configure_relay() {
             if [[ -n "$MUX_OPTION" ]]; then
                 GOST_OPTIONS+="&${MUX_OPTION}"
             fi
+            
+            # Add optimization parameters
+            if [[ -n "$OPTIMIZATION_PARAMS" ]]; then
+                GOST_OPTIONS+="$OPTIMIZATION_PARAMS"
+            fi
+            
+            # Add obfuscation parameters
+            if [[ -n "$OBFUSCATION_PARAMS" ]]; then
+                GOST_OPTIONS+="$OBFUSCATION_PARAMS"
+            fi
+            
+            # Add behavioral parameters
+            if [[ -n "$BEHAVIOR_PARAMS" ]]; then
+                GOST_OPTIONS+="$BEHAVIOR_PARAMS"
+            fi
+
+            # Handle multi-path tunneling
+            MULTI_TUNNEL_OPTIONS=""
+            if [[ "$tunnel_choice" == "2" ]]; then
+                # Create dual tunnel configuration
+                SECOND_PORT=$((lport_relay + 1))
+                MULTI_TUNNEL_OPTIONS=" -L relay${TRANSMISSION}://:${SECOND_PORT}?bind=true"
+                MULTI_TUNNEL_OPTIONS+="&interval=random,${interval_min}ms-$((interval_max + 500))ms"
+                MULTI_TUNNEL_OPTIONS+="&size=random,$((size_min - 20))-$((size_max + 20))"
+                MULTI_TUNNEL_OPTIONS+="&ttl=random,$((ttl_min - 2))-$((ttl_max + 2))"
+                MULTI_TUNNEL_OPTIONS+="${GOST_OPTIONS#*bind=true?}"
+                
+                echo -e "\033[1;32m✓ Dual tunnel created on ports $lport_relay and $SECOND_PORT\033[0m"
+                
+            elif [[ "$tunnel_choice" == "3" ]]; then
+                # Create quad tunnel configuration
+                for i in {0..3}; do
+                    PORT=$((lport_relay + i))
+                    if [[ $i -eq 0 ]]; then
+                        MULTI_TUNNEL_OPTIONS="-L relay${TRANSMISSION}://:${PORT}?bind=true"
+                    else
+                        MULTI_TUNNEL_OPTIONS+=" -L relay${TRANSMISSION}://:${PORT}?bind=true"
+                    fi
+                    
+                    # Vary parameters for each tunnel to avoid pattern detection
+                    RAND_INTERVAL_MIN=$((150 + (RANDOM % 100)))
+                    RAND_INTERVAL_MAX=$((2000 + (RANDOM % 2000)))
+                    RAND_SIZE_MIN=$((64 + (RANDOM % 50)))
+                    RAND_SIZE_MAX=$((512 + (RANDOM % 200)))
+                    RAND_TTL_MIN=$((52 + (RANDOM % 10)))
+                    RAND_TTL_MAX=$((64 + (RANDOM % 8)))
+                    
+                    MULTI_TUNNEL_OPTIONS+="&interval=random,${RAND_INTERVAL_MIN}ms-${RAND_INTERVAL_MAX}ms"
+                    MULTI_TUNNEL_OPTIONS+="&size=random,${RAND_SIZE_MIN}-${RAND_SIZE_MAX}"
+                    MULTI_TUNNEL_OPTIONS+="&ttl=random,${RAND_TTL_MIN}-${RAND_TTL_MAX}"
+                    MULTI_TUNNEL_OPTIONS+="${GOST_OPTIONS#*bind=true?}"
+                done
+                
+                echo -e "\033[1;32m✓ Quad tunnel created on ports $lport_relay to $((lport_relay + 3))\033[0m"
+            fi
+
+            # If multi-tunnel, use those options
+            if [[ -n "$MULTI_TUNNEL_OPTIONS" ]]; then
+                GOST_OPTIONS="$MULTI_TUNNEL_OPTIONS"
+            fi
 
             echo -e "\n\033[1;32m✅ ICMP Tunnel Configuration:\033[0m"
-            echo -e "   • Transmission: ICMP with stealth mode"
-            echo -e "   • Interval: ${interval_min}ms-${interval_max}ms (random)"
-            echo -e "   • Packet Size: ${size_min}-${size_max} bytes (random)"
-            echo -e "   • TTL: ${ttl_min}-${ttl_max} (random)"
-            echo -e "   • Encryption: ${ICMP_CIPHER:-none}"
-            echo -e "   • Jitter: ${jitter_enable:-enabled}"
-            echo -e "   • Padding: ${padding_enable:-enabled}"
+            echo -e "   • Transmission: ICMP with advanced stealth"
+            echo -e "   • Interval: ${ICMP_INTERVAL}"
+            echo -e "   • Packet Size: ${ICMP_SIZE}"
+            echo -e "   • TTL: ${ICMP_TTL}"
+            echo -e "   • Encryption: ${ICMP_CIPHER:-AES-256-GCM}"
+            echo -e "   • Tunnels: $tunnel_choice parallel connection(s)"
             echo -e "   • Port: ${lport_relay}"
+            if [[ "$tunnel_choice" -gt 1 ]]; then
+                echo -e "   • Additional Ports: $((lport_relay + 1)) to $((lport_relay + tunnel_choice - 1))"
+            fi
             echo -e "\n\033[1;32mGenerated GOST options:\033[0m $GOST_OPTIONS"
             echo -e "\033[1;32mUsing GOST core:\033[0m $core_name"
 
@@ -373,8 +519,8 @@ configure_relay() {
 
             # Select listen type (TCP/UDP)
             echo -e "\n\033[1;34mSelect Listen Type:\033[0m"
-            echo -e "\033[1;32m1.\033[0m \033[1;36mTCP mode\033[0m (gRPC, XHTTP, WS, TCP, etc.)"
-            echo -e "\033[1;32m2.\033[0m \033[1;36mUDP mode\033[0m (WireGuard, KCP, Hysteria, QUIC, etc.)"
+            echo -e "\033[1;32m1.\033[0m \033[1;36mTCP mode\033[0m"
+            echo -e "\033[1;32m2.\033[0m \033[1;36mUDP mode\033[0m"
             read -p $'\033[1;33mEnter listen transmission type: \033[0m' listen_choice
 
             case $listen_choice in
@@ -422,80 +568,96 @@ configure_relay() {
                 fi
             done
 
-            # ICMP Transmission Type with advanced stealth options
-            echo -e "\n\033[1;34mConfiguring ICMP Tunnel with Stealth Mode\033[0m"
+            # ICMP Transmission Type
+            echo -e "\n\033[1;34mConfiguring ICMP Tunnel\033[0m"
             TRANSMISSION="+icmp"
             
-            # Advanced ICMP stealth configuration
-            echo -e "\n\033[1;34m⚡ Advanced ICMP Stealth Settings\033[0m"
+            # Select Security Profile for server side
+            echo -e "\n\033[1;34m🔒 Select Security Profile:\033[0m"
+            echo -e "\033[1;32m1.\033[0m Maximum Stealth (Recommended)"
+            echo -e "\033[1;32m2.\033[0m High Speed + Stealth"
+            echo -e "\033[1;32m3.\033[0m Ultra Security"
+            echo -e "\033[1;32m4.\033[0m Custom Settings"
+            read -p $'\033[1;33mSelect profile (default: 1): \033[0m' profile_choice
+            profile_choice=${profile_choice:-1}
             
-            # Interval settings
-            echo -e "\033[1;36m1. Packet Interval Settings:\033[0m"
-            echo -e "   Random interval between packets (recommended: 200ms-5000ms)"
-            read -p $'\033[1;33mEnter min interval in ms (default: 200): \033[0m' interval_min
-            interval_min=${interval_min:-200}
-            read -p $'\033[1;33mEnter max interval in ms (default: 5000): \033[0m' interval_max
-            interval_max=${interval_max:-5000}
-            ICMP_INTERVAL="random,${interval_min}ms-${interval_max}ms"
-            
-            # Packet size settings
-            echo -e "\n\033[1;36m2. Packet Size Settings:\033[0m"
-            echo -e "   Random packet size (recommended: 64-512 bytes)"
-            read -p $'\033[1;33mEnter min size in bytes (default: 64): \033[0m' size_min
-            size_min=${size_min:-64}
-            read -p $'\033[1;33mEnter max size in bytes (default: 512): \033[0m' size_max
-            size_max=${size_max:-512}
-            ICMP_SIZE="random,${size_min}-${size_max}"
-            
-            # TTL settings
-            echo -e "\n\033[1;36m3. TTL Settings:\033[0m"
-            echo -e "   Random TTL values (recommended: 58-64)"
-            read -p $'\033[1;33mEnter min TTL (default: 58): \033[0m' ttl_min
-            ttl_min=${ttl_min:-58}
-            read -p $'\033[1;33mEnter max TTL (default: 64): \033[0m' ttl_max
-            ttl_max=${ttl_max:-64}
-            ICMP_TTL="random,${ttl_min}-${ttl_max}"
-            
-            # Encryption settings
-            echo -e "\n\033[1;36m4. Encryption Settings:\033[0m"
-            echo -e "   \033[1;32m1.\033[0m ChaCha20-Poly1305 (Fast, Recommended)"
-            echo -e "   \033[1;32m2.\033[0m AES-256-GCM (Strong)"
-            echo -e "   \033[1;32m3.\033[0m No encryption"
-            read -p $'\033[1;33mSelect encryption type (default: 1): \033[0m' cipher_choice
-            cipher_choice=${cipher_choice:-1}
-            
-            case $cipher_choice in
-                1) ICMP_CIPHER="chacha20-poly1305" ;;
-                2) ICMP_CIPHER="aes-256-gcm" ;;
-                3) ICMP_CIPHER="" ;;
-                *) ICMP_CIPHER="chacha20-poly1305" ;;
+            case $profile_choice in
+                1)  # Maximum Stealth
+                    ICMP_INTERVAL="random,150ms-3000ms"
+                    ICMP_SIZE="random,84-548"
+                    ICMP_TTL="random,52-64"
+                    ICMP_CIPHER="chacha20-poly1305"
+                    ICMP_JITTER="&jitter=true&jitterMax=200ms"
+                    ICMP_PADDING="&padding=true&paddingMin=48&paddingMax=192"
+                    COMPRESS_OPTION="compress=true"
+                    MUX_OPTION="mux=true"
+                    OPTIMIZATION_PARAMS="&windowSize=65535&bufferSize=32768"
+                    ;;
+                    
+                2)  # High Speed + Stealth
+                    ICMP_INTERVAL="random,100ms-1500ms"
+                    ICMP_SIZE="random,128-1024"
+                    ICMP_TTL="random,55-65"
+                    ICMP_CIPHER="aes-256-gcm"
+                    ICMP_JITTER="&jitter=true&jitterMax=150ms"
+                    ICMP_PADDING="&padding=true&paddingMin=32&paddingMax=128"
+                    COMPRESS_OPTION="compress=true"
+                    MUX_OPTION="mux=true"
+                    OPTIMIZATION_PARAMS="&windowSize=131072&bufferSize=65536"
+                    ;;
+                    
+                3)  # Ultra Security
+                    ICMP_INTERVAL="random,200ms-8000ms"
+                    ICMP_SIZE="random,56-256"
+                    ICMP_TTL="random,48-72"
+                    ICMP_CIPHER="aes-256-gcm"
+                    ICMP_JITTER="&jitter=true&jitterMax=500ms"
+                    ICMP_PADDING="&padding=true&paddingMin=64&paddingMax=256"
+                    COMPRESS_OPTION="compress=true"
+                    MUX_OPTION="mux=true"
+                    OPTIMIZATION_PARAMS="&windowSize=32768&bufferSize=16384"
+                    ;;
+                    
+                4)  # Custom Settings
+                    echo -e "\n\033[1;34m⚙️ Custom ICMP Settings:\033[0m"
+                    
+                    # Interval settings
+                    read -p $'\033[1;33mEnter min interval in ms (default: 150): \033[0m' interval_min
+                    interval_min=${interval_min:-150}
+                    read -p $'\033[1;33mEnter max interval in ms (default: 3000): \033[0m' interval_max
+                    interval_max=${interval_max:-3000}
+                    ICMP_INTERVAL="random,${interval_min}ms-${interval_max}ms"
+                    
+                    # Packet size settings
+                    read -p $'\033[1;33mEnter min size in bytes (default: 84): \033[0m' size_min
+                    size_min=${size_min:-84}
+                    read -p $'\033[1;33mEnter max size in bytes (default: 548): \033[0m' size_max
+                    size_max=${size_max:-548}
+                    ICMP_SIZE="random,${size_min}-${size_max}"
+                    
+                    # TTL settings
+                    read -p $'\033[1;33mEnter min TTL (default: 52): \033[0m' ttl_min
+                    ttl_min=${ttl_min:-52}
+                    read -p $'\033[1;33mEnter max TTL (default: 64): \033[0m' ttl_max
+                    ttl_max=${ttl_max:-64}
+                    ICMP_TTL="random,${ttl_min}-${ttl_max}"
+                    
+                    # Encryption
+                    read -p $'\033[1;33mEnable encryption? [y/n] (default: y): \033[0m' encrypt_enable
+                    encrypt_enable=${encrypt_enable:-y}
+                    if [[ "$encrypt_enable" == "y" || "$encrypt_enable" == "yes" ]]; then
+                        ICMP_CIPHER="chacha20-poly1305"
+                    else
+                        ICMP_CIPHER=""
+                    fi
+                    
+                    ICMP_JITTER=""
+                    ICMP_PADDING=""
+                    COMPRESS_OPTION="compress=true"
+                    MUX_OPTION="mux=true"
+                    OPTIMIZATION_PARAMS=""
+                    ;;
             esac
-            
-            # Jitter settings
-            echo -e "\n\033[1;36m5. Jitter Settings:\033[0m"
-            read -p $'\033[1;33mEnable jitter? [y/n] (default: y): \033[0m' jitter_enable
-            jitter_enable=${jitter_enable:-y}
-            if [[ "$jitter_enable" == "y" || "$jitter_enable" == "yes" ]]; then
-                read -p $'\033[1;33mEnter max jitter in ms (default: 300): \033[0m' jitter_max
-                jitter_max=${jitter_max:-300}
-                ICMP_JITTER="&jitter=true&jitterMax=${jitter_max}ms"
-            else
-                ICMP_JITTER=""
-            fi
-            
-            # Padding settings
-            echo -e "\n\033[1;36m6. Padding Settings:\033[0m"
-            read -p $'\033[1;33mEnable random padding? [y/n] (default: y): \033[0m' padding_enable
-            padding_enable=${padding_enable:-y}
-            if [[ "$padding_enable" == "y" || "$padding_enable" == "yes" ]]; then
-                read -p $'\033[1;33mEnter min padding size (default: 32): \033[0m' padding_min
-                padding_min=${padding_min:-32}
-                read -p $'\033[1;33mEnter max padding size (default: 128): \033[0m' padding_max
-                padding_max=${padding_max:-128}
-                ICMP_PADDING="&padding=true&paddingMin=${padding_min}&paddingMax=${padding_max}"
-            else
-                ICMP_PADDING=""
-            fi
 
             # Ask about connection stability for server side
             echo -e "\n\033[1;34m🔧 Connection Stability Settings\033[0m"
@@ -546,12 +708,6 @@ configure_relay() {
                 read -p $'\033[1;33mEnter heartbeat interval in seconds (default: 30): \033[0m' custom_heartbeat
                 custom_heartbeat=${custom_heartbeat:-30}
                 HEARTBEAT_VALUE="${custom_heartbeat}s"
-                
-                echo -e "\n\033[1;32m✅ Stability Settings:\033[0m"
-                echo -e "   • Timeout: $TIMEOUT_VALUE"
-                echo -e "   • Read/Write Timeout: $RWTIMEOUT_VALUE"
-                echo -e "   • Retries: $RETRY_VALUE"
-                echo -e "   • Heartbeat: $HEARTBEAT_VALUE"
             fi
 
             # Ask about compression for relay side
@@ -575,10 +731,7 @@ configure_relay() {
             FORWARD_OPTIONS="relay${TRANSMISSION}://${relay_ip}:${relay_port}"
             
             # Build parameters for forward side with ICMP stealth
-            FORWARD_PARAMS=""
-            
-            # Add ICMP stealth parameters
-            FORWARD_PARAMS+="interval=${ICMP_INTERVAL}"
+            FORWARD_PARAMS="interval=${ICMP_INTERVAL}"
             FORWARD_PARAMS+="&size=${ICMP_SIZE}"
             FORWARD_PARAMS+="&ttl=${ICMP_TTL}"
             
@@ -607,6 +760,11 @@ configure_relay() {
                 FORWARD_PARAMS+="&mux=true"
             fi
             
+            # Add optimization parameters
+            if [[ -n "$OPTIMIZATION_PARAMS" ]]; then
+                FORWARD_PARAMS+="$OPTIMIZATION_PARAMS"
+            fi
+            
             # Add stability options to forward side
             FORWARD_PARAMS+="&timeout=${TIMEOUT_VALUE}"
             FORWARD_PARAMS+="&rwTimeout=${RWTIMEOUT_VALUE}"
@@ -618,12 +776,10 @@ configure_relay() {
 
             echo -e "\n\033[1;32m✅ ICMP Tunnel Configuration:\033[0m"
             echo -e "   • Transmission: ICMP with stealth mode"
-            echo -e "   • Interval: ${interval_min}ms-${interval_max}ms (random)"
-            echo -e "   • Packet Size: ${size_min}-${size_max} bytes (random)"
-            echo -e "   • TTL: ${ttl_min}-${ttl_max} (random)"
-            echo -e "   • Encryption: ${ICMP_CIPHER:-none}"
-            echo -e "   • Jitter: ${jitter_enable:-enabled}"
-            echo -e "   • Padding: ${padding_enable:-enabled}"
+            echo -e "   • Interval: ${ICMP_INTERVAL}"
+            echo -e "   • Packet Size: ${ICMP_SIZE}"
+            echo -e "   • TTL: ${ICMP_TTL}"
+            echo -e "   • Encryption: ${ICMP_CIPHER:-AES-256-GCM}"
             echo -e "   • Listen Port: ${listen_port}"
             echo -e "   • Config Port: ${config_port}"
             echo -e "\n\033[1;32mGenerated GOST options:\033[0m $GOST_OPTIONS"
@@ -677,80 +833,96 @@ configure_socks5() {
                 break
             done
             
-            # ICMP Transmission Type with advanced stealth options
-            echo -e "\n\033[1;34mConfiguring ICMP Tunnel with Stealth Mode\033[0m"
+            # ICMP Transmission Type
+            echo -e "\n\033[1;34mConfiguring ICMP Tunnel\033[0m"
             TRANSMISSION="+icmp"
             
-            # Advanced ICMP stealth configuration
-            echo -e "\n\033[1;34m⚡ Advanced ICMP Stealth Settings\033[0m"
+            # Select Security Profile for socks5
+            echo -e "\n\033[1;34m🔒 Select Security Profile:\033[0m"
+            echo -e "\033[1;32m1.\033[0m Maximum Stealth (Recommended)"
+            echo -e "\033[1;32m2.\033[0m High Speed + Stealth"
+            echo -e "\033[1;32m3.\033[0m Ultra Security"
+            echo -e "\033[1;32m4.\033[0m Custom Settings"
+            read -p $'\033[1;33mSelect profile (default: 1): \033[0m' profile_choice
+            profile_choice=${profile_choice:-1}
             
-            # Interval settings
-            echo -e "\033[1;36m1. Packet Interval Settings:\033[0m"
-            echo -e "   Random interval between packets (recommended: 200ms-5000ms)"
-            read -p $'\033[1;33mEnter min interval in ms (default: 200): \033[0m' interval_min
-            interval_min=${interval_min:-200}
-            read -p $'\033[1;33mEnter max interval in ms (default: 5000): \033[0m' interval_max
-            interval_max=${interval_max:-5000}
-            ICMP_INTERVAL="random,${interval_min}ms-${interval_max}ms"
-            
-            # Packet size settings
-            echo -e "\n\033[1;36m2. Packet Size Settings:\033[0m"
-            echo -e "   Random packet size (recommended: 64-512 bytes)"
-            read -p $'\033[1;33mEnter min size in bytes (default: 64): \033[0m' size_min
-            size_min=${size_min:-64}
-            read -p $'\033[1;33mEnter max size in bytes (default: 512): \033[0m' size_max
-            size_max=${size_max:-512}
-            ICMP_SIZE="random,${size_min}-${size_max}"
-            
-            # TTL settings
-            echo -e "\n\033[1;36m3. TTL Settings:\033[0m"
-            echo -e "   Random TTL values (recommended: 58-64)"
-            read -p $'\033[1;33mEnter min TTL (default: 58): \033[0m' ttl_min
-            ttl_min=${ttl_min:-58}
-            read -p $'\033[1;33mEnter max TTL (default: 64): \033[0m' ttl_max
-            ttl_max=${ttl_max:-64}
-            ICMP_TTL="random,${ttl_min}-${ttl_max}"
-            
-            # Encryption settings
-            echo -e "\n\033[1;36m4. Encryption Settings:\033[0m"
-            echo -e "   \033[1;32m1.\033[0m ChaCha20-Poly1305 (Fast, Recommended)"
-            echo -e "   \033[1;32m2.\033[0m AES-256-GCM (Strong)"
-            echo -e "   \033[1;32m3.\033[0m No encryption"
-            read -p $'\033[1;33mSelect encryption type (default: 1): \033[0m' cipher_choice
-            cipher_choice=${cipher_choice:-1}
-            
-            case $cipher_choice in
-                1) ICMP_CIPHER="chacha20-poly1305" ;;
-                2) ICMP_CIPHER="aes-256-gcm" ;;
-                3) ICMP_CIPHER="" ;;
-                *) ICMP_CIPHER="chacha20-poly1305" ;;
+            case $profile_choice in
+                1)  # Maximum Stealth
+                    ICMP_INTERVAL="random,150ms-3000ms"
+                    ICMP_SIZE="random,84-548"
+                    ICMP_TTL="random,52-64"
+                    ICMP_CIPHER="chacha20-poly1305"
+                    ICMP_JITTER="&jitter=true&jitterMax=200ms"
+                    ICMP_PADDING="&padding=true&paddingMin=48&paddingMax=192"
+                    COMPRESS_OPTION="compress=true"
+                    MUX_OPTION="mux=true"
+                    OPTIMIZATION_PARAMS="&windowSize=65535&bufferSize=32768"
+                    ;;
+                    
+                2)  # High Speed + Stealth
+                    ICMP_INTERVAL="random,100ms-1500ms"
+                    ICMP_SIZE="random,128-1024"
+                    ICMP_TTL="random,55-65"
+                    ICMP_CIPHER="aes-256-gcm"
+                    ICMP_JITTER="&jitter=true&jitterMax=150ms"
+                    ICMP_PADDING="&padding=true&paddingMin=32&paddingMax=128"
+                    COMPRESS_OPTION="compress=true"
+                    MUX_OPTION="mux=true"
+                    OPTIMIZATION_PARAMS="&windowSize=131072&bufferSize=65536"
+                    ;;
+                    
+                3)  # Ultra Security
+                    ICMP_INTERVAL="random,200ms-8000ms"
+                    ICMP_SIZE="random,56-256"
+                    ICMP_TTL="random,48-72"
+                    ICMP_CIPHER="aes-256-gcm"
+                    ICMP_JITTER="&jitter=true&jitterMax=500ms"
+                    ICMP_PADDING="&padding=true&paddingMin=64&paddingMax=256"
+                    COMPRESS_OPTION="compress=true"
+                    MUX_OPTION="mux=true"
+                    OPTIMIZATION_PARAMS="&windowSize=32768&bufferSize=16384"
+                    ;;
+                    
+                4)  # Custom Settings
+                    echo -e "\n\033[1;34m⚙️ Custom ICMP Settings:\033[0m"
+                    
+                    # Interval settings
+                    read -p $'\033[1;33mEnter min interval in ms (default: 150): \033[0m' interval_min
+                    interval_min=${interval_min:-150}
+                    read -p $'\033[1;33mEnter max interval in ms (default: 3000): \033[0m' interval_max
+                    interval_max=${interval_max:-3000}
+                    ICMP_INTERVAL="random,${interval_min}ms-${interval_max}ms"
+                    
+                    # Packet size settings
+                    read -p $'\033[1;33mEnter min size in bytes (default: 84): \033[0m' size_min
+                    size_min=${size_min:-84}
+                    read -p $'\033[1;33mEnter max size in bytes (default: 548): \033[0m' size_max
+                    size_max=${size_max:-548}
+                    ICMP_SIZE="random,${size_min}-${size_max}"
+                    
+                    # TTL settings
+                    read -p $'\033[1;33mEnter min TTL (default: 52): \033[0m' ttl_min
+                    ttl_min=${ttl_min:-52}
+                    read -p $'\033[1;33mEnter max TTL (default: 64): \033[0m' ttl_max
+                    ttl_max=${ttl_max:-64}
+                    ICMP_TTL="random,${ttl_min}-${ttl_max}"
+                    
+                    # Encryption
+                    read -p $'\033[1;33mEnable encryption? [y/n] (default: y): \033[0m' encrypt_enable
+                    encrypt_enable=${encrypt_enable:-y}
+                    if [[ "$encrypt_enable" == "y" || "$encrypt_enable" == "yes" ]]; then
+                        ICMP_CIPHER="chacha20-poly1305"
+                    else
+                        ICMP_CIPHER=""
+                    fi
+                    
+                    ICMP_JITTER=""
+                    ICMP_PADDING=""
+                    COMPRESS_OPTION="compress=true"
+                    MUX_OPTION="mux=true"
+                    OPTIMIZATION_PARAMS=""
+                    ;;
             esac
-            
-            # Jitter settings
-            echo -e "\n\033[1;36m5. Jitter Settings:\033[0m"
-            read -p $'\033[1;33mEnable jitter? [y/n] (default: y): \033[0m' jitter_enable
-            jitter_enable=${jitter_enable:-y}
-            if [[ "$jitter_enable" == "y" || "$jitter_enable" == "yes" ]]; then
-                read -p $'\033[1;33mEnter max jitter in ms (default: 300): \033[0m' jitter_max
-                jitter_max=${jitter_max:-300}
-                ICMP_JITTER="&jitter=true&jitterMax=${jitter_max}ms"
-            else
-                ICMP_JITTER=""
-            fi
-            
-            # Padding settings
-            echo -e "\n\033[1;36m6. Padding Settings:\033[0m"
-            read -p $'\033[1;33mEnable random padding? [y/n] (default: y): \033[0m' padding_enable
-            padding_enable=${padding_enable:-y}
-            if [[ "$padding_enable" == "y" || "$padding_enable" == "yes" ]]; then
-                read -p $'\033[1;33mEnter min padding size (default: 32): \033[0m' padding_min
-                padding_min=${padding_min:-32}
-                read -p $'\033[1;33mEnter max padding size (default: 128): \033[0m' padding_max
-                padding_max=${padding_max:-128}
-                ICMP_PADDING="&padding=true&paddingMin=${padding_min}&paddingMax=${padding_max}"
-            else
-                ICMP_PADDING=""
-            fi
 
             # Ask about connection stability
             echo -e "\n\033[1;34m🔧 Connection Stability Settings\033[0m"
@@ -801,38 +973,6 @@ configure_socks5() {
                 read -p $'\033[1;33mEnter heartbeat interval in seconds (default: 30): \033[0m' custom_heartbeat
                 custom_heartbeat=${custom_heartbeat:-30}
                 HEARTBEAT_VALUE="${custom_heartbeat}s"
-                
-                echo -e "\n\033[1;32m✅ Stability Settings:\033[0m"
-                echo -e "   • Timeout: $TIMEOUT_VALUE"
-                echo -e "   • Read/Write Timeout: $RWTIMEOUT_VALUE"
-                echo -e "   • Retries: $RETRY_VALUE"
-                echo -e "   • Heartbeat: $HEARTBEAT_VALUE"
-            fi
-
-            # Ask about compression
-            echo -e "\n\033[1;34mEnable Compression?\033[0m"
-            echo -e "\033[1;32m1.\033[0m Yes (Recommended for better performance)"
-            echo -e "\033[1;32m2.\033[0m No"
-            read -p $'\033[1;33mEnter your choice (default: 1): \033[0m' compress_choice
-            compress_choice=${compress_choice:-1}
-            
-            if [[ "$compress_choice" == "1" ]]; then
-                COMPRESS_OPTION="compress=true"
-            else
-                COMPRESS_OPTION=""
-            fi
-
-            # Ask about multiplexing
-            echo -e "\n\033[1;34mEnable Multiplexing (mux)?\033[0m"
-            echo -e "\033[1;32m1.\033[0m Yes (Recommended for multiple connections)"
-            echo -e "\033[1;32m2.\033[0m No"
-            read -p $'\033[1;33mEnter your choice (default: 1): \033[0m' mux_choice
-            mux_choice=${mux_choice:-1}
-            
-            if [[ "$mux_choice" == "1" ]]; then
-                MUX_OPTION="mux=true"
-            else
-                MUX_OPTION=""
             fi
 
             # Build GOST options with ICMP stealth parameters
@@ -874,15 +1014,18 @@ configure_socks5() {
             if [[ -n "$MUX_OPTION" ]]; then
                 GOST_OPTIONS+="&${MUX_OPTION}"
             fi
+            
+            # Add optimization parameters
+            if [[ -n "$OPTIMIZATION_PARAMS" ]]; then
+                GOST_OPTIONS+="$OPTIMIZATION_PARAMS"
+            fi
 
             echo -e "\n\033[1;32m✅ ICMP Tunnel Configuration:\033[0m"
             echo -e "   • Transmission: ICMP with stealth mode"
-            echo -e "   • Interval: ${interval_min}ms-${interval_max}ms (random)"
-            echo -e "   • Packet Size: ${size_min}-${size_max} bytes (random)"
-            echo -e "   • TTL: ${ttl_min}-${ttl_max} (random)"
-            echo -e "   • Encryption: ${ICMP_CIPHER:-none}"
-            echo -e "   • Jitter: ${jitter_enable:-enabled}"
-            echo -e "   • Padding: ${padding_enable:-enabled}"
+            echo -e "   • Interval: ${ICMP_INTERVAL}"
+            echo -e "   • Packet Size: ${ICMP_SIZE}"
+            echo -e "   • TTL: ${ICMP_TTL}"
+            echo -e "   • Encryption: ${ICMP_CIPHER:-AES-256-GCM}"
             echo -e "   • Port: ${lport_socks5}"
             echo -e "\n\033[1;32mGenerated GOST options:\033[0m $GOST_OPTIONS"
             echo -e "\033[1;32mUsing GOST core:\033[0m $core_name"
@@ -916,8 +1059,8 @@ configure_socks5() {
 
             # Select Listen Type (TCP/UDP)
             echo -e "\n\033[1;34mSelect Listen Type:\033[0m"
-            echo -e "\033[1;32m1.\033[0m \033[1;36mTCP mode\033[0m (gRPC, XHTTP, WS, TCP, etc.)"
-            echo -e "\033[1;32m2.\033[0m \033[1;36mUDP mode\033[0m (WireGuard, KCP, Hysteria, QUIC, etc.)"
+            echo -e "\033[1;32m1.\033[0m \033[1;36mTCP mode\033[0m"
+            echo -e "\033[1;32m2.\033[0m \033[1;36mUDP mode\033[0m"
             read -p $'\033[1;33mEnter listen transmission type: \033[0m' listen_choice
 
             case $listen_choice in
@@ -961,80 +1104,96 @@ configure_socks5() {
                 break
             done
 
-            # ICMP Transmission Type with advanced stealth options
-            echo -e "\n\033[1;34mConfiguring ICMP Tunnel with Stealth Mode\033[0m"
+            # ICMP Transmission Type
+            echo -e "\n\033[1;34mConfiguring ICMP Tunnel\033[0m"
             TRANSMISSION="+icmp"
             
-            # Advanced ICMP stealth configuration
-            echo -e "\n\033[1;34m⚡ Advanced ICMP Stealth Settings\033[0m"
+            # Select Security Profile for socks5
+            echo -e "\n\033[1;34m🔒 Select Security Profile:\033[0m"
+            echo -e "\033[1;32m1.\033[0m Maximum Stealth (Recommended)"
+            echo -e "\033[1;32m2.\033[0m High Speed + Stealth"
+            echo -e "\033[1;32m3.\033[0m Ultra Security"
+            echo -e "\033[1;32m4.\033[0m Custom Settings"
+            read -p $'\033[1;33mSelect profile (default: 1): \033[0m' profile_choice
+            profile_choice=${profile_choice:-1}
             
-            # Interval settings
-            echo -e "\033[1;36m1. Packet Interval Settings:\033[0m"
-            echo -e "   Random interval between packets (recommended: 200ms-5000ms)"
-            read -p $'\033[1;33mEnter min interval in ms (default: 200): \033[0m' interval_min
-            interval_min=${interval_min:-200}
-            read -p $'\033[1;33mEnter max interval in ms (default: 5000): \033[0m' interval_max
-            interval_max=${interval_max:-5000}
-            ICMP_INTERVAL="random,${interval_min}ms-${interval_max}ms"
-            
-            # Packet size settings
-            echo -e "\n\033[1;36m2. Packet Size Settings:\033[0m"
-            echo -e "   Random packet size (recommended: 64-512 bytes)"
-            read -p $'\033[1;33mEnter min size in bytes (default: 64): \033[0m' size_min
-            size_min=${size_min:-64}
-            read -p $'\033[1;33mEnter max size in bytes (default: 512): \033[0m' size_max
-            size_max=${size_max:-512}
-            ICMP_SIZE="random,${size_min}-${size_max}"
-            
-            # TTL settings
-            echo -e "\n\033[1;36m3. TTL Settings:\033[0m"
-            echo -e "   Random TTL values (recommended: 58-64)"
-            read -p $'\033[1;33mEnter min TTL (default: 58): \033[0m' ttl_min
-            ttl_min=${ttl_min:-58}
-            read -p $'\033[1;33mEnter max TTL (default: 64): \033[0m' ttl_max
-            ttl_max=${ttl_max:-64}
-            ICMP_TTL="random,${ttl_min}-${ttl_max}"
-            
-            # Encryption settings
-            echo -e "\n\033[1;36m4. Encryption Settings:\033[0m"
-            echo -e "   \033[1;32m1.\033[0m ChaCha20-Poly1305 (Fast, Recommended)"
-            echo -e "   \033[1;32m2.\033[0m AES-256-GCM (Strong)"
-            echo -e "   \033[1;32m3.\033[0m No encryption"
-            read -p $'\033[1;33mSelect encryption type (default: 1): \033[0m' cipher_choice
-            cipher_choice=${cipher_choice:-1}
-            
-            case $cipher_choice in
-                1) ICMP_CIPHER="chacha20-poly1305" ;;
-                2) ICMP_CIPHER="aes-256-gcm" ;;
-                3) ICMP_CIPHER="" ;;
-                *) ICMP_CIPHER="chacha20-poly1305" ;;
+            case $profile_choice in
+                1)  # Maximum Stealth
+                    ICMP_INTERVAL="random,150ms-3000ms"
+                    ICMP_SIZE="random,84-548"
+                    ICMP_TTL="random,52-64"
+                    ICMP_CIPHER="chacha20-poly1305"
+                    ICMP_JITTER="&jitter=true&jitterMax=200ms"
+                    ICMP_PADDING="&padding=true&paddingMin=48&paddingMax=192"
+                    COMPRESS_OPTION="compress=true"
+                    MUX_OPTION="mux=true"
+                    OPTIMIZATION_PARAMS="&windowSize=65535&bufferSize=32768"
+                    ;;
+                    
+                2)  # High Speed + Stealth
+                    ICMP_INTERVAL="random,100ms-1500ms"
+                    ICMP_SIZE="random,128-1024"
+                    ICMP_TTL="random,55-65"
+                    ICMP_CIPHER="aes-256-gcm"
+                    ICMP_JITTER="&jitter=true&jitterMax=150ms"
+                    ICMP_PADDING="&padding=true&paddingMin=32&paddingMax=128"
+                    COMPRESS_OPTION="compress=true"
+                    MUX_OPTION="mux=true"
+                    OPTIMIZATION_PARAMS="&windowSize=131072&bufferSize=65536"
+                    ;;
+                    
+                3)  # Ultra Security
+                    ICMP_INTERVAL="random,200ms-8000ms"
+                    ICMP_SIZE="random,56-256"
+                    ICMP_TTL="random,48-72"
+                    ICMP_CIPHER="aes-256-gcm"
+                    ICMP_JITTER="&jitter=true&jitterMax=500ms"
+                    ICMP_PADDING="&padding=true&paddingMin=64&paddingMax=256"
+                    COMPRESS_OPTION="compress=true"
+                    MUX_OPTION="mux=true"
+                    OPTIMIZATION_PARAMS="&windowSize=32768&bufferSize=16384"
+                    ;;
+                    
+                4)  # Custom Settings
+                    echo -e "\n\033[1;34m⚙️ Custom ICMP Settings:\033[0m"
+                    
+                    # Interval settings
+                    read -p $'\033[1;33mEnter min interval in ms (default: 150): \033[0m' interval_min
+                    interval_min=${interval_min:-150}
+                    read -p $'\033[1;33mEnter max interval in ms (default: 3000): \033[0m' interval_max
+                    interval_max=${interval_max:-3000}
+                    ICMP_INTERVAL="random,${interval_min}ms-${interval_max}ms"
+                    
+                    # Packet size settings
+                    read -p $'\033[1;33mEnter min size in bytes (default: 84): \033[0m' size_min
+                    size_min=${size_min:-84}
+                    read -p $'\033[1;33mEnter max size in bytes (default: 548): \033[0m' size_max
+                    size_max=${size_max:-548}
+                    ICMP_SIZE="random,${size_min}-${size_max}"
+                    
+                    # TTL settings
+                    read -p $'\033[1;33mEnter min TTL (default: 52): \033[0m' ttl_min
+                    ttl_min=${ttl_min:-52}
+                    read -p $'\033[1;33mEnter max TTL (default: 64): \033[0m' ttl_max
+                    ttl_max=${ttl_max:-64}
+                    ICMP_TTL="random,${ttl_min}-${ttl_max}"
+                    
+                    # Encryption
+                    read -p $'\033[1;33mEnable encryption? [y/n] (default: y): \033[0m' encrypt_enable
+                    encrypt_enable=${encrypt_enable:-y}
+                    if [[ "$encrypt_enable" == "y" || "$encrypt_enable" == "yes" ]]; then
+                        ICMP_CIPHER="chacha20-poly1305"
+                    else
+                        ICMP_CIPHER=""
+                    fi
+                    
+                    ICMP_JITTER=""
+                    ICMP_PADDING=""
+                    COMPRESS_OPTION="compress=true"
+                    MUX_OPTION="mux=true"
+                    OPTIMIZATION_PARAMS=""
+                    ;;
             esac
-            
-            # Jitter settings
-            echo -e "\n\033[1;36m5. Jitter Settings:\033[0m"
-            read -p $'\033[1;33mEnable jitter? [y/n] (default: y): \033[0m' jitter_enable
-            jitter_enable=${jitter_enable:-y}
-            if [[ "$jitter_enable" == "y" || "$jitter_enable" == "yes" ]]; then
-                read -p $'\033[1;33mEnter max jitter in ms (default: 300): \033[0m' jitter_max
-                jitter_max=${jitter_max:-300}
-                ICMP_JITTER="&jitter=true&jitterMax=${jitter_max}ms"
-            else
-                ICMP_JITTER=""
-            fi
-            
-            # Padding settings
-            echo -e "\n\033[1;36m6. Padding Settings:\033[0m"
-            read -p $'\033[1;33mEnable random padding? [y/n] (default: y): \033[0m' padding_enable
-            padding_enable=${padding_enable:-y}
-            if [[ "$padding_enable" == "y" || "$padding_enable" == "yes" ]]; then
-                read -p $'\033[1;33mEnter min padding size (default: 32): \033[0m' padding_min
-                padding_min=${padding_min:-32}
-                read -p $'\033[1;33mEnter max padding size (default: 128): \033[0m' padding_max
-                padding_max=${padding_max:-128}
-                ICMP_PADDING="&padding=true&paddingMin=${padding_min}&paddingMax=${padding_max}"
-            else
-                ICMP_PADDING=""
-            fi
 
             # Ask about connection stability for server side
             echo -e "\n\033[1;34m🔧 Connection Stability Settings\033[0m"
@@ -1085,12 +1244,6 @@ configure_socks5() {
                 read -p $'\033[1;33mEnter heartbeat interval in seconds (default: 30): \033[0m' custom_heartbeat
                 custom_heartbeat=${custom_heartbeat:-30}
                 HEARTBEAT_VALUE="${custom_heartbeat}s"
-                
-                echo -e "\n\033[1;32m✅ Stability Settings:\033[0m"
-                echo -e "   • Timeout: $TIMEOUT_VALUE"
-                echo -e "   • Read/Write Timeout: $RWTIMEOUT_VALUE"
-                echo -e "   • Retries: $RETRY_VALUE"
-                echo -e "   • Heartbeat: $HEARTBEAT_VALUE"
             fi
 
             # Ask about compression for socks5 side
@@ -1147,17 +1300,20 @@ configure_socks5() {
                 FORWARD_PARAMS+="&mux=true"
             fi
             
+            # Add optimization parameters
+            if [[ -n "$OPTIMIZATION_PARAMS" ]]; then
+                FORWARD_PARAMS+="$OPTIMIZATION_PARAMS"
+            fi
+            
             # Combine all options
             GOST_OPTIONS="-L $LISTEN_OPTIONS -F $FORWARD_OPTIONS?$FORWARD_PARAMS"
 
             echo -e "\n\033[1;32m✅ ICMP Tunnel Configuration:\033[0m"
             echo -e "   • Transmission: ICMP with stealth mode"
-            echo -e "   • Interval: ${interval_min}ms-${interval_max}ms (random)"
-            echo -e "   • Packet Size: ${size_min}-${size_max} bytes (random)"
-            echo -e "   • TTL: ${ttl_min}-${ttl_max} (random)"
-            echo -e "   • Encryption: ${ICMP_CIPHER:-none}"
-            echo -e "   • Jitter: ${jitter_enable:-enabled}"
-            echo -e "   • Padding: ${padding_enable:-enabled}"
+            echo -e "   • Interval: ${ICMP_INTERVAL}"
+            echo -e "   • Packet Size: ${ICMP_SIZE}"
+            echo -e "   • TTL: ${ICMP_TTL}"
+            echo -e "   • Encryption: ${ICMP_CIPHER:-AES-256-GCM}"
             echo -e "   • Listen Port: ${listen_port}"
             echo -e "   • Config Port: ${config_port}"
             echo -e "\n\033[1;32mGenerated GOST options:\033[0m $GOST_OPTIONS"
