@@ -1,45 +1,42 @@
 #!/bin/bash
 
 # ============================================================================
-# Paqet Tunnel Advanced Installer - مقاوم در برابر DPI پیشرفته
-# Version: 4.0-anti-dpi
-# Instance ID: $(date +%s%N | sha256sum | head -c 8)
+# Paqet Tunnel Advanced Installer - ضد DPI پیشرفته
+# Version: 4.1-stable
 # ============================================================================
 
 set -e
 
-# رنگ‌های خروجی
+# رنگ‌ها
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 MAGENTA='\033[0;35m'
-WHITE='\033[1;37m'
 NC='\033[0m'
 
-# مسیرهای سیستمی
+# مسیرها
 CONFIG_DIR="/etc/paqet-advanced"
 SERVICE_DIR="/etc/systemd/system"
 LOG_DIR="/var/log/paqet"
 BIN_DIR="/usr/local/bin"
 INSTALL_DIR="/opt/paqet-advanced"
 
-# نسخه‌ها
-SCRIPT_VERSION="4.0-anti-dpi"
+# نسخه
+SCRIPT_VERSION="4.1-stable"
 PAQET_VERSION="v1.0.0-alpha.14"
 GITHUB_REPO="hanselime/paqet"
 
-# متغیرهای جهانی
+# متغیرها
 ROLE=""
-TUNNEL_NAME=""
 ENCRYPTION_KEY=""
 OBFUSCATION_LEVEL=""
 INSTANCE_ID=$(date +%s%N | sha256sum | head -c 8)
 PUBLIC_IP=""
 SERVER_ADDRESS=""
 
-# توابع نمایشی
+# توابع نمایش - بدون پرانتز مشکل‌دار
 print_banner() {
     clear
     echo -e "${MAGENTA}"
@@ -58,18 +55,32 @@ print_banner() {
     echo ""
 }
 
-print_step() { echo -e "${BLUE}[*]${NC} $1"; }
-print_success() { echo -e "${GREEN}[✓]${NC} $1"; }
-print_error() { echo -e "${RED}[✗]${NC} $1"; }
-print_warning() { echo -e "${YELLOW}[!]${NC} $1"; }
-print_info() { echo -e "${CYAN}[i]${NC} $1"; }
+print_step() { 
+    echo -e "${BLUE}[*]${NC} $1"
+}
+
+print_success() { 
+    echo -e "${GREEN}[✓]${NC} $1"
+}
+
+print_error() { 
+    echo -e "${RED}[✗]${NC} $1"
+}
+
+print_warning() { 
+    echo -e "${YELLOW}[!]${NC} $1"
+}
+
+print_info() { 
+    echo -e "${CYAN}[i]${NC} $1"
+}
 
 # ============================================================================
 # توابع اصلی
 # ============================================================================
 
 check_root() {
-    if [[ $EUID -ne 0 ]]; then
+    if [ "$EUID" -ne 0 ]; then
         print_error "این اسکریپت نیاز به دسترسی root دارد"
         exit 1
     fi
@@ -83,21 +94,33 @@ detect_os() {
     else
         OS=$(uname -s | tr '[:upper:]' '[:lower:]')
     fi
-    echo $OS
+    echo "$OS"
 }
 
 detect_arch() {
-    case $(uname -m) in
-        x86_64|amd64) echo "amd64" ;;
-        aarch64|arm64) echo "arm64" ;;
-        armv7l) echo "armv7" ;;
-        i386|i686) echo "386" ;;
-        *) print_error "معماری نامشخص"; exit 1 ;;
+    arch=$(uname -m)
+    case "$arch" in
+        x86_64|amd64)
+            echo "amd64"
+            ;;
+        aarch64|arm64)
+            echo "arm64"
+            ;;
+        armv7l)
+            echo "armv7"
+            ;;
+        i386|i686)
+            echo "386"
+            ;;
+        *)
+            print_error "معماری نامشخص: $arch"
+            exit 1
+            ;;
     esac
 }
 
 optimize_system() {
-    print_step "بهینه‌سازی سیستم برای عملکرد بهتر")
+    print_step "بهینه‌سازی سیستم برای عملکرد بهتر"
     
     cat > /etc/sysctl.d/99-paqet.conf << EOF
 net.core.rmem_max = 134217728
@@ -114,16 +137,16 @@ EOF
 }
 
 install_dependencies() {
-    print_step "نصب پیش‌نیازها")
+    print_step "نصب پیش‌نیازها"
     
-    local os=$(detect_os)
+    os=$(detect_os)
     
-    case $os in
+    case "$os" in
         ubuntu|debian)
             apt update -qq
             apt install -y curl wget libpcap-dev iptables iproute2 >/dev/null 2>&1
             ;;
-        centos|rhel|fedora)
+        centos|rhel|fedora|rocky|almalinux)
             yum install -y curl wget libpcap-devel iptables iproute >/dev/null 2>&1
             ;;
         *)
@@ -135,9 +158,9 @@ install_dependencies() {
 }
 
 generate_encryption_key() {
-    print_step "تولید کلید رمزنگاری")
+    print_step "تولید کلید رمزنگاری"
     
-    if command -v openssl >/dev/null; then
+    if command -v openssl >/dev/null 2>&1; then
         ENCRYPTION_KEY=$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 32)
     else
         ENCRYPTION_KEY=$(date +%s%N | sha256sum | base64 | head -c 32)
@@ -147,40 +170,40 @@ generate_encryption_key() {
 }
 
 download_paqet() {
-    print_step "دریافت باینری Paqet")
+    print_step "دریافت باینری Paqet"
     
-    local arch=$(detect_arch)
-    local filename="paqet-linux-${arch}-${PAQET_VERSION}.tar.gz"
-    local url="https://github.com/${GITHUB_REPO}/releases/download/${PAQET_VERSION}/${filename}"
+    arch=$(detect_arch)
+    filename="paqet-linux-${arch}-${PAQET_VERSION}.tar.gz"
+    url="https://github.com/${GITHUB_REPO}/releases/download/${PAQET_VERSION}/${filename}"
     
-    mkdir -p $INSTALL_DIR
-    mkdir -p $LOG_DIR
+    mkdir -p "$INSTALL_DIR"
+    mkdir -p "$LOG_DIR"
     
     if ! curl -L -o /tmp/paqet.tar.gz "$url"; then
         print_error "دانلود ناموفق"
         exit 1
     fi
     
-    tar -xzf /tmp/paqet.tar.gz -C $INSTALL_DIR
-    chmod +x $INSTALL_DIR/paqet
-    ln -sf $INSTALL_DIR/paqet $BIN_DIR/paqet
+    tar -xzf /tmp/paqet.tar.gz -C "$INSTALL_DIR"
+    chmod +x "$INSTALL_DIR/paqet"
+    ln -sf "$INSTALL_DIR/paqet" "$BIN_DIR/paqet"
     
     print_success "Paqet نصب شد"
 }
 
 generate_random_port() {
-    # تولید پورت تصادفی از رنج‌های مختلف
-    local ports=(443 8443 8080 8880 9443 7080 65432 50050)
-    echo ${ports[$RANDOM % ${#ports[@]}]}
+    ports=(443 8443 8080 8880 9443 7080 65432 50050)
+    index=$((RANDOM % ${#ports[@]}))
+    echo "${ports[$index]}"
 }
 
 create_advanced_config() {
-    print_step "ایجاد کانفیگ پیشرفته")
+    print_step "ایجاد کانفیگ پیشرفته"
     
-    mkdir -p $CONFIG_DIR
+    mkdir -p "$CONFIG_DIR"
     
-    local LISTEN_PORT=$(generate_random_port)
-    local CONFIG_FILE="$CONFIG_DIR/config-${INSTANCE_ID}.yaml"
+    LISTEN_PORT=$(generate_random_port)
+    CONFIG_FILE="$CONFIG_DIR/config-${INSTANCE_ID}.yaml"
     
     cat > "$CONFIG_FILE" << EOF
 metadata:
@@ -223,11 +246,11 @@ EOF
 }
 
 create_systemd_service() {
-    print_step "ایجاد سرویس systemd")
+    print_step "ایجاد سرویس systemd"
     
-    local SERVICE_NAME="paqet-${INSTANCE_ID}"
-    local SERVICE_FILE="$SERVICE_DIR/${SERVICE_NAME}.service"
-    local CONFIG_FILE="$CONFIG_DIR/config-${INSTANCE_ID}.yaml"
+    SERVICE_NAME="paqet-${INSTANCE_ID}"
+    SERVICE_FILE="$SERVICE_DIR/${SERVICE_NAME}.service"
+    CONFIG_FILE="$CONFIG_DIR/config-${INSTANCE_ID}.yaml"
     
     cat > "$SERVICE_FILE" << EOF
 [Unit]
@@ -245,53 +268,42 @@ WantedBy=multi-user.target
 EOF
     
     systemctl daemon-reload
-    systemctl enable $SERVICE_NAME
-    systemctl start $SERVICE_NAME
+    systemctl enable "$SERVICE_NAME"
+    systemctl start "$SERVICE_NAME"
     
     print_success "سرویس ایجاد و راه‌اندازی شد: $SERVICE_NAME"
 }
 
 create_health_check() {
-    print_step "ایجاد سیستم نظارت")
+    print_step "ایجاد سیستم نظارت"
     
-    local HEALTH_SCRIPT="$CONFIG_DIR/health-${INSTANCE_ID}.sh"
+    HEALTH_SCRIPT="$CONFIG_DIR/health-${INSTANCE_ID}.sh"
     
     cat > "$HEALTH_SCRIPT" << 'EOF'
 #!/bin/bash
-# اسکریپت نظارت بر سلامت تونل
-
 INSTANCE="$1"
 LOG="/var/log/paqet/health.log"
-
-echo "$(date) - سلامت‌سنجی نمونه $INSTANCE" >> $LOG
-
-# بررسی وضعیت سرویس
+echo "$(date) - سلامت‌سنجی نمونه $INSTANCE" >> "$LOG"
 if systemctl is-active --quiet "paqet-$INSTANCE"; then
-    echo "✅ سرویس فعال" >> $LOG
+    echo "سرویس فعال" >> "$LOG"
 else
-    echo "❌ سرویس غیرفعال - تلاش برای راه‌اندازی مجدد" >> $LOG
+    echo "سرویس غیرفعال - راه‌اندازی مجدد" >> "$LOG"
     systemctl restart "paqet-$INSTANCE"
 fi
-
-# تولید ترافیک عادی برای استتار
 curl -s --max-time 5 https://1.1.1.1/ >/dev/null 2>&1
 EOF
     
     chmod +x "$HEALTH_SCRIPT"
-    
-    # اضافه کردن به کرون
     echo "*/5 * * * * root $HEALTH_SCRIPT $INSTANCE_ID" > /etc/cron.d/paqet-health
-    
-    print_success "سیستم نظارت ایجاد شد")
+    print_success "سیستم نظارت ایجاد شد"
 }
 
 # ============================================================================
-# منوها و رابط کاربری
+# منوها
 # ============================================================================
 
 show_main_menu() {
     print_banner
-    
     echo -e "${CYAN}نقش سیستم را انتخاب کنید:${NC}"
     echo "1) سرور (خارج از ایران)"
     echo "2) کلاینت (داخل ایران)"
@@ -303,17 +315,32 @@ show_main_menu() {
     read -p "انتخاب [1-5]: " choice
     
     case $choice in
-        1) ROLE="server"; show_server_menu ;;
-        2) ROLE="client"; show_client_menu ;;
-        3) show_system_info ;;
-        4) uninstall_paqet ;;
-        5) exit 0 ;;
-        *) print_error "انتخاب نامعتبر"; show_main_menu ;;
+        1) 
+            ROLE="server"
+            show_server_menu
+            ;;
+        2) 
+            ROLE="client"
+            show_client_menu
+            ;;
+        3) 
+            show_system_info
+            ;;
+        4) 
+            uninstall_paqet
+            ;;
+        5) 
+            exit 0
+            ;;
+        *) 
+            print_error "انتخاب نامعتبر"
+            show_main_menu
+            ;;
     esac
 }
 
 show_server_menu() {
-    print_step "پیکربندی سرور")
+    print_step "پیکربندی سرور"
     
     echo -e "${CYAN}سطح استتار:${NC}"
     echo "1) استاندارد (سرعت بالا)"
@@ -330,14 +357,13 @@ show_server_menu() {
         *) OBFUSCATION_LEVEL="advanced" ;;
     esac
     
-    # دریافت IP عمومی
-    PUBLIC_IP=$(curl -4 -s ifconfig.me || echo "نامشخص")
+    PUBLIC_IP=$(curl -4 -s ifconfig.me 2>/dev/null || echo "نامشخص")
     print_info "IP عمومی: $PUBLIC_IP"
     
     echo ""
     read -p "آیا ادامه دهیم؟ (y/N): " confirm
     
-    if [[ "$confirm" =~ ^[Yy]$ ]]; then
+    if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
         execute_installation
     else
         show_main_menu
@@ -345,7 +371,7 @@ show_server_menu() {
 }
 
 show_client_menu() {
-    print_step "پیکربندی کلاینت")
+    print_step "پیکربندی کلاینت"
     
     echo -e "${CYAN}سطح استتار:${NC}"
     echo "1) استاندارد (سرعت بالا)"
@@ -373,7 +399,7 @@ show_client_menu() {
     
     read -p "آیا ادامه دهیم؟ (y/N): " confirm
     
-    if [[ "$confirm" =~ ^[Yy]$ ]]; then
+    if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
         execute_installation
     else
         show_main_menu
@@ -381,7 +407,7 @@ show_client_menu() {
 }
 
 execute_installation() {
-    print_step "شروع نصب پیشرفته")
+    print_step "شروع نصب پیشرفته"
     
     optimize_system
     install_dependencies
@@ -391,15 +417,15 @@ execute_installation() {
     create_systemd_service
     create_health_check
     
-    print_success "✅ نصب کامل شد!")
+    print_success "✅ نصب کامل شد!"
     show_installation_summary
 }
 
 show_installation_summary() {
-    print_step "خلاصه نصب")
+    print_step "خلاصه نصب"
     
-    local CONFIG_FILE="$CONFIG_DIR/config-${INSTANCE_ID}.yaml"
-    local PORT=$(grep "listen_port" "$CONFIG_FILE" | awk '{print $2}')
+    CONFIG_FILE="$CONFIG_DIR/config-${INSTANCE_ID}.yaml"
+    PORT=$(grep "listen_port" "$CONFIG_FILE" | awk '{print $2}')
     
     echo ""
     echo -e "${GREEN}════════════════════════════════════════════════════════════════${NC}"
@@ -425,22 +451,17 @@ show_installation_summary() {
     echo -e "  کانفیگ: ${GREEN}$CONFIG_FILE${NC}"
     echo -e "  لاگ‌ها: ${GREEN}$LOG_DIR/${NC}"
     echo ""
-    echo -e "${GREEN}════════════════════════════════════════════════════════════════${NC}"
-    echo ""
-    echo -e "${YELLOW}⚠️  نکته: قدرت این روش در استفاده جمعی است${NC}"
-    echo ""
     
     read -p "برای ادامه Enter بزنید..."
     show_main_menu
 }
 
 show_system_info() {
-    print_step "اطلاعات سیستم")
+    print_step "اطلاعات سیستم"
     
     echo -e "سیستم عامل: $(detect_os)"
     echo -e "معماری: $(detect_arch)"
     echo -e "شناسه نمونه: $INSTANCE_ID"
-    echo -e "IP عمومی: $(curl -4 -s ifconfig.me || echo 'نامشخص')"
     echo ""
     
     read -p "برای ادامه Enter بزنید..."
@@ -448,26 +469,24 @@ show_system_info() {
 }
 
 uninstall_paqet() {
-    print_step "حذف نصب")
+    print_step "حذف نصب"
     
     read -p "آیا مطمئن هستید؟ (y/N): " confirm
     
-    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+    if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
         show_main_menu
         return
     fi
     
-    # توقف سرویس‌ها
-    systemctl list-units --type=service | grep paqet | awk '{print $1}' | while read service; do
-        systemctl stop "$service"
-        systemctl disable "$service"
+    systemctl list-units --type=service 2>/dev/null | grep paqet | awk '{print $1}' | while read -r service; do
+        systemctl stop "$service" 2>/dev/null
+        systemctl disable "$service" 2>/dev/null
     done
     
-    # حذف فایل‌ها
-    rm -f $SERVICE_DIR/paqet-*.service
-    rm -rf $CONFIG_DIR $INSTALL_DIR $LOG_DIR
-    rm -f /etc/cron.d/paqet-health
-    rm -f $BIN_DIR/paqet
+    rm -f $SERVICE_DIR/paqet-*.service 2>/dev/null
+    rm -rf "$CONFIG_DIR" "$INSTALL_DIR" "$LOG_DIR" 2>/dev/null
+    rm -f /etc/cron.d/paqet-health 2>/dev/null
+    rm -f "$BIN_DIR/paqet" 2>/dev/null
     
     systemctl daemon-reload
     
@@ -484,5 +503,4 @@ main() {
     show_main_menu
 }
 
-# شروع اسکریپت
 main "$@"
